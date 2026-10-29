@@ -1,0 +1,4 @@
+interface:
+  display_name: "Buky Licitaciones"
+  short_description: "Viabilidad para empresas y personas naturales, con el siguiente paso claro"
+  default_prompt: "Usa $licitaciones-chile para decirme qué conviene licitar hoy, por qué y qué debo resolver primero."

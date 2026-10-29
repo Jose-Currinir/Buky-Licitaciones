@@ -1,0 +1,255 @@
+"""Recordatorios UTC, deduplicados y con reintentos; notificaciones sin shell."""
+from datetime import datetime, timedelta, timezone
+import hashlib
+import os
+import platform
+import re
+import shutil
+import subprocess
+import sys
+
+import base_empresa as base
+import estado
+import viabilidad as viability
+from i18n import tr
+
+
+class ReminderError(ValueError):
+    pass
+
+
+def _utc(value):
+    if isinstance(value, str):
+        value = base.moment(value)
+    if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+        raise ReminderError(tr('reminder.timezone_required'))
+    return value.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def _id(rut, process, kind, due):
+    raw = '\0'.join([rut, process or '', kind, due]).encode('utf-8')
+    return hashlib.sha256(raw).hexdigest()[:32]
+
+
+def add(directory, rut, title, due, detail='', process=None, kind='manual', available=None):
+    rut = base.normalize_rut(rut)
+    if not isinstance(title, str) or not title.strip() or len(title) > 500:
+        raise ReminderError(tr('reminder.title_required'))
+    valid_kind = kind in {'manual', 'cierre_proximo'}
+    if kind.startswith('cierre_'):
+        try:
+            valid_kind = 0 < float(kind.removeprefix('cierre_')) < 100000
+        except ValueError:
+            valid_kind = False
+    if not valid_kind:
+        raise ReminderError(tr('reminder.kind_unknown'))
+    due = _utc(due)
+    available = _utc(available or due)
+    identifier = _id(rut, process, kind, due)
+    now = base.utc_now()
+    with estado.connect(directory) as connection:
+        connection.execute(
+            'INSERT INTO recordatorios(id, rut, proceso, tipo, titulo, detalle, vence_utc, disponible_utc, creado_utc) '
+            'VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING',
+            (identifier, rut, process, kind, title.strip(), str(detail or '')[:2000], due, available, now),
+        )
+        connection.commit()
+        row = connection.execute('SELECT * FROM recordatorios WHERE id = ?', (identifier,)).fetchone()
+    return dict(row)
+
+
+def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
+    """Reconcilia cierres: nuevas fechas crean avisos y las anteriores se cancelan."""
+    now = base.moment(_utc(now or datetime.now(timezone.utc)))
+    rut = base.normalize_rut(rut)
+    company = base.load(directory, rut)
+    desired = set()
+    created = 0
+    for item in company['oportunidades'].values():
+        evaluation = viability.evaluate(item, company, now)
+        if evaluation['decision'] == 'no_participar' or not item.get('fecha_cierre'):
+            continue
+        closing = base.moment(item['fecha_cierre'])
+        if closing <= now or evaluation['etapa'] not in {'abiertas', 'por_cerrar'}:
+            continue
+        future_thresholds = []
+        for hours in sorted(set(thresholds), reverse=True):
+            if not isinstance(hours, (int, float)) or isinstance(hours, bool) or hours <= 0:
+                raise ReminderError(tr('reminder.threshold_positive'))
+            due = closing - timedelta(hours=hours)
+            if due > now:
+                future_thresholds.append((hours, due))
+        if future_thresholds:
+            scheduled = future_thresholds
+        else:
+            scheduled = [('proximo', now)]
+        for hours, due in scheduled:
+            kind = f'cierre_{hours}' if hours != 'proximo' else 'cierre_proximo'
+            due_utc = _utc(due)
+            desired.add(_id(rut, item['codigo'], kind, due_utc))
+            before = count_pending(directory, rut)
+            add(directory, rut, item['nombre'], due_utc, detail=f'Cierre: {item["fecha_cierre"]} · {item["codigo"]}', process=item['codigo'], kind=kind)
+            after = count_pending(directory, rut)
+            created += max(0, after - before)
+    cancelled = 0
+    with estado.connect(directory) as connection:
+        rows = connection.execute(
+            "SELECT id FROM recordatorios WHERE rut = ? AND estado = 'pendiente' AND tipo != 'manual'", (rut,)
+        ).fetchall()
+        for row in rows:
+            if row['id'] not in desired:
+                connection.execute("UPDATE recordatorios SET estado = 'cancelado' WHERE id = ?", (row['id'],))
+                cancelled += 1
+        connection.commit()
+    return {'creados': created, 'cancelados': cancelled, 'activos': len(desired)}
+
+
+def count_pending(directory, rut):
+    with estado.connect(directory) as connection:
+        return connection.execute("SELECT COUNT(*) AS total FROM recordatorios WHERE rut = ? AND estado = 'pendiente'", (base.normalize_rut(rut),)).fetchone()['total']
+
+
+def list_reminders(directory, rut=None, include_finished=False):
+    query = 'SELECT * FROM recordatorios'
+    clauses, params = [], []
+    if rut:
+        clauses.append('rut = ?')
+        params.append(base.normalize_rut(rut))
+    if not include_finished:
+        clauses.append("estado = 'pendiente'")
+    if clauses:
+        query += ' WHERE ' + ' AND '.join(clauses)
+    query += ' ORDER BY vence_utc, id'
+    with estado.connect(directory) as connection:
+        return estado.rows_dict(connection.execute(query, params).fetchall())
+
+
+def due(directory, now=None):
+    now_utc = _utc(now or datetime.now(timezone.utc))
+    with estado.connect(directory) as connection:
+        return estado.rows_dict(connection.execute(
+            "SELECT * FROM recordatorios WHERE estado = 'pendiente' AND disponible_utc <= ? ORDER BY vence_utc, id", (now_utc,)
+        ).fetchall())
+
+
+def applescript_string(value):
+    return '"' + value.replace('\\', '\\\\').replace('"', '\\"').replace('\n', ' ').replace('\r', ' ') + '"'
+
+
+CHANNELS = frozenset({'automatico', 'escritorio', 'terminal'})
+CONTROL_CHARS = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]')
+
+
+def resolve_channel(channel='automatico', system=None, environ=None):
+    if channel not in CHANNELS:
+        raise ReminderError(tr('reminder.channel_unknown'))
+    if channel != 'automatico':
+        return channel
+    system = system or platform.system()
+    environ = os.environ if environ is None else environ
+    headless = system == 'Linux' and not environ.get('DISPLAY') and not environ.get('WAYLAND_DISPLAY')
+    return 'terminal' if headless else 'escritorio'
+
+
+def terminal_text(value, single_line=False):
+    text = CONTROL_CHARS.sub('', str(value or ''))
+    if single_line:
+        return re.sub(r'[\r\n\t]+', ' ', text)
+    return text.replace('\r\n', '\n').replace('\r', '\n')
+
+
+def terminal_notification(title, body):
+    header = tr('reminder.terminal_header', titulo=terminal_text(title, single_line=True))
+    detail = terminal_text(body)
+    return header + ('\n' + detail if detail else '')
+
+
+def notification_command(title, body, system=None):
+    system = system or platform.system()
+    if system == 'Darwin':
+        script = 'display notification ' + applescript_string(body) + ' with title ' + applescript_string(title)
+        return ['osascript', '-e', script]
+    if system == 'Linux':
+        if not shutil.which('notify-send'):
+            raise ReminderError(tr('reminder.linux_missing'))
+        return ['notify-send', title, body]
+    if system == 'Windows':
+        script = (
+            '& { param($title, $body) Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; '
+            '$n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; '
+            '$n.Visible = $true; $n.ShowBalloonTip(10000, $title, $body, [System.Windows.Forms.ToolTipIcon]::Info); '
+            'Start-Sleep -Seconds 11; $n.Dispose() }'
+        )
+        executable = shutil.which('powershell') or shutil.which('pwsh')
+        if not executable:
+            raise ReminderError(tr('reminder.windows_missing'))
+        return [executable, '-NoProfile', '-NonInteractive', '-Command', script, '-title', title, '-body', body]
+    raise ReminderError(tr('reminder.unsupported'))
+
+
+def notify(title, body, runner=None, system=None, channel='automatico', environ=None, output=None):
+    channel = resolve_channel(channel, system, environ)
+    if channel == 'terminal':
+        print(terminal_notification(title, body), file=output or sys.stderr, flush=True)
+        return channel
+    runner = runner or subprocess.run
+    command = notification_command(title, body, system)
+    result = runner(command, capture_output=True, text=True, timeout=20)
+    if result.returncode:
+        raise ReminderError(tr('reminder.notify_failed'))
+    return channel
+
+
+def dispatch(directory, now=None, notifier=None, channel='automatico'):
+    channel = resolve_channel(channel)
+    if notifier is None:
+        notifier = lambda title, body: notify(title, body, channel=channel)
+    now = now or datetime.now(timezone.utc)
+    sent, failed = [], []
+    if now.tzinfo is None:
+        raise ReminderError(tr('reminder.dispatch_timezone_required'))
+    for reminder in due(directory, now):
+        # Lease atómico: otro proceso no puede reclamar el mismo aviso durante 5 minutos.
+        lease = _utc(now + timedelta(minutes=5))
+        with estado.connect(directory) as connection:
+            claimed = connection.execute(
+                "UPDATE recordatorios SET disponible_utc = ? WHERE id = ? AND estado = 'pendiente' AND disponible_utc = ?",
+                (lease, reminder['id'], reminder['disponible_utc']),
+            )
+            connection.commit()
+        if not claimed.rowcount:
+            continue
+        try:
+            notifier(reminder['titulo'], reminder['detalle'])
+            sent_at = base.utc_now()
+            with estado.connect(directory) as connection:
+                finished = connection.execute(
+                    "UPDATE recordatorios SET estado = 'enviado', enviado_utc = ?, ultimo_error = NULL WHERE id = ? AND estado = 'pendiente' AND disponible_utc = ?",
+                    (sent_at, reminder['id'], lease),
+                )
+                connection.commit()
+            if finished.rowcount:
+                sent.append(reminder['id'])
+        except (ReminderError, OSError, subprocess.SubprocessError) as error:
+            attempts = reminder['intentos'] + 1
+            retry = now + timedelta(minutes=min(60, 2 ** min(attempts, 6)))
+            message = str(error)[:500]
+            with estado.connect(directory) as connection:
+                connection.execute(
+                    "UPDATE recordatorios SET intentos = ?, disponible_utc = ?, ultimo_error = ? WHERE id = ? AND estado = 'pendiente' AND disponible_utc = ?",
+                    (attempts, _utc(retry), message, reminder['id'], lease),
+                )
+                connection.commit()
+            failed.append({'id': reminder['id'], 'error': message, 'reintento_utc': _utc(retry)})
+    return {'enviados': sent, 'fallidos': failed}
+
+
+def cancel(directory, rut, identifier):
+    with estado.connect(directory) as connection:
+        result = connection.execute(
+            "UPDATE recordatorios SET estado = 'cancelado' WHERE id = ? AND rut = ? AND estado = 'pendiente'",
+            (identifier, base.normalize_rut(rut)),
+        )
+        connection.commit()
+    if not result.rowcount:
+        raise ReminderError(tr('reminder.not_found'))

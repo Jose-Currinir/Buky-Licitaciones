@@ -1,0 +1,107 @@
+Licencia Buky de Código Visible 1.0
+
+Copyright (c) 2026 Butake SpA. Todos los derechos reservados, salvo los permisos
+expresamente concedidos en esta licencia.
+
+Esta es una licencia de código visible: puedes ver, instalar y usar el Software
+en las condiciones siguientes, pero no es una licencia de código abierto.
+
+1. Definiciones
+   a) «El Software»: la skill Buky Licitaciones publicada en
+      https://github.com/Jose-Currinir/Buky-Licitaciones, incluidos sus
+      instrucciones, referencias, plantillas y scripts, en cualquier versión
+      distribuida bajo esta licencia.
+   b) «Tú»: la persona natural o jurídica que usa el Software.
+   c) «Tu organización»: tú y, si eres una persona jurídica, tus trabajadores
+      y prestadores que actúan por tu cuenta. No incluye sociedades
+      relacionadas, matrices ni filiales, que necesitan su propia instalación.
+   d) «Tus resultados»: los perfiles, evaluaciones, matrices, ofertas,
+      recordatorios y demás contenidos que generes con el Software sobre tus
+      propias actividades.
+
+2. Uso permitido
+   Puedes descargar, instalar y usar el Software, en tus equipos y asistentes
+   de IA, para la gestión de las compras públicas de tu organización: buscar
+   y evaluar oportunidades, estudiar el mercado, preparar y presentar tus
+   ofertas y dar seguimiento a tus contratos. Obtén cada copia desde el
+   repositorio oficial o mediante herramientas que la descarguen directamente
+   de él, como `npx skills add Jose-Currinir/Buky-Licitaciones`.
+
+3. Modificaciones
+   Puedes modificar tu copia para el uso permitido en la cláusula 2.
+
+4. Contribuciones
+   Puedes crear un fork en GitHub para proponer cambios al repositorio oficial
+   mediante pull requests. Al enviar una contribución declaras que tienes
+   derecho a hacerlo y concedes a Butake SpA una licencia perpetua, mundial,
+   gratuita, irrevocable y sublicenciable para usarla, modificarla, publicarla
+   y distribuirla bajo cualquier licencia. Esto no afecta los derechos morales
+   que la ley te reconoce como autor.
+
+5. Prohibiciones
+   Sin autorización escrita de Butake SpA no puedes:
+   a) redistribuir, publicar, vender, arrendar, sublicenciar ni poner a
+      disposición de terceros el Software o una obra derivada, total o
+      parcialmente;
+   b) publicarlo en otros repositorios, espejos, paquetes, catálogos o
+      marketplaces de skills, ni usar un fork como canal alternativo de
+      distribución;
+   c) vender u ofrecer, con o sin pago, servicios a terceros que se presten
+      usando el Software, como asesoría o gestión de licitaciones para
+      clientes, búsqueda o evaluación de oportunidades por encargo, o una
+      plataforma, aplicación o servicio en línea basado en él, aunque no se
+      entregue el código;
+   d) incorporarlo, total o parcialmente, en un producto de terceros;
+   e) eliminar o alterar los avisos de autoría, licencia o marca.
+
+6. Tus resultados
+   Tus resultados te pertenecen. Puedes usarlos, presentarlos ante compradores
+   públicos y compartirlos con quien quieras. Las prohibiciones de la
+   cláusula 5 se refieren al Software y a los servicios prestados con él, no a
+   tus propios resultados.
+
+7. Derechos del titular
+   Las restricciones de esta licencia aplican a quienes reciben el Software
+   bajo ella. Butake SpA, como titular, conserva todos los derechos sobre el
+   Software y las contribuciones recibidas, incluidos los de explotarlo
+   comercialmente, prestar servicios con él, otorgar licencias distintas y
+   cambiar la licencia de versiones futuras. Las versiones ya publicadas
+   mantienen la licencia con la que se publicaron.
+
+8. GitHub
+   Nada en esta licencia restringe los permisos para ver y crear forks del
+   repositorio dentro de GitHub que conceden los Términos de Servicio de esa
+   plataforma. Cualquier otro uso queda sujeto a esta licencia.
+
+9. Marcas
+   Esta licencia no concede derechos sobre los nombres o marcas Buky ni Butake,
+   salvo para indicar el origen del Software.
+
+10. Sin garantía
+    El Software se entrega «tal cual», sin garantías de ningún tipo, expresas o
+    implícitas, incluidas las de comerciabilidad, idoneidad para un fin
+    determinado y no infracción. El Software no constituye asesoría legal,
+    tributaria ni comercial, no garantiza adjudicaciones y no está afiliado a
+    la Dirección ChileCompra ni a Mercado Público.
+
+11. Limitación de responsabilidad
+    En la máxima medida permitida por la ley, Butake SpA y los contribuyentes
+    no responden por daños directos, indirectos, incidentales o consecuentes
+    derivados del uso o de la imposibilidad de usar el Software, incluidas las
+    decisiones de participar o no en un proceso de compra.
+
+12. Terminación
+    Si incumples esta licencia, tus permisos terminan. Si es tu primer
+    incumplimiento y lo corriges dentro de 30 días desde que Butake SpA te lo
+    notifique, tus permisos se restablecen. Si terminan, debes dejar de usar el
+    Software y eliminar tus copias; tus resultados siguen siendo tuyos.
+
+13. Disposiciones generales
+    Esta licencia se rige por las leyes de la República de Chile y cualquier
+    controversia se someterá a los tribunales ordinarios de Santiago. Si una
+    cláusula resulta inválida, las demás siguen vigentes. Si existe una
+    traducción, prevalece este texto en español.
+
+Para otros usos, incluidos la redistribución y los servicios a terceros,
+solicita una licencia comercial a Butake SpA abriendo un issue en
+https://github.com/Jose-Currinir/Buky-Licitaciones/issues.
