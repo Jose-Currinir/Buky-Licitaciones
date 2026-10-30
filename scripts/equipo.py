@@ -7,6 +7,7 @@ la confirmación del usuario. Después se marcan como enviados o descartados.
 import hashlib
 import json
 import re
+import uuid
 
 import base_empresa as base
 import estado
@@ -58,8 +59,6 @@ def _member(row):
     return item
 
 
-def _member_id(rut, email):
-    return hashlib.sha256((rut + '\0' + email).encode('utf-8')).hexdigest()[:12]
 
 
 def list_members(directory, rut, include_inactive=False):
@@ -86,19 +85,25 @@ def add_member(directory, rut, name, email, role='equipo', alerts=None):
     if role not in ROLES:
         raise TeamError(tr('team.invalid_role'))
     alerts = _avisos(sorted(AVISOS) if alerts is None else alerts)
-    identifier = _member_id(rut, email)
     now = base.utc_now()
     with estado.connect(directory) as connection:
-        existing = connection.execute('SELECT activo FROM equipo WHERE id = ?', (identifier,)).fetchone()
+        existing = connection.execute('SELECT id, activo FROM equipo WHERE rut = ? AND correo = ?', (rut, email)).fetchone()
         if existing and existing['activo']:
             raise TeamError(tr('team.duplicate'))
-        # Reincorporar a alguien conserva su id y la auditoría de envíos anteriores.
-        connection.execute(
-            'INSERT INTO equipo(id, rut, nombre, correo, rol, avisos, activo, creado_utc, actualizado_utc) '
-            'VALUES(?, ?, ?, ?, ?, ?, 1, ?, ?) ON CONFLICT(id) DO UPDATE SET nombre = excluded.nombre, '
-            'rol = excluded.rol, avisos = excluded.avisos, activo = 1, actualizado_utc = excluded.actualizado_utc',
-            (identifier, rut, name, email, role, json.dumps(alerts), now, now),
-        )
+        if existing:
+            # Reincorporar a alguien conserva su id y la auditoría de envíos anteriores.
+            identifier = existing['id']
+            connection.execute(
+                'UPDATE equipo SET nombre = ?, rol = ?, avisos = ?, activo = 1, actualizado_utc = ? WHERE id = ?',
+                (name, role, json.dumps(alerts), now, identifier),
+            )
+        else:
+            identifier = uuid.uuid4().hex[:12]
+            connection.execute(
+                'INSERT INTO equipo(id, rut, nombre, correo, rol, avisos, activo, creado_utc, actualizado_utc) '
+                'VALUES(?, ?, ?, ?, ?, ?, 1, ?, ?)',
+                (identifier, rut, name, email, role, json.dumps(alerts), now, now),
+            )
         connection.commit()
     return get_member(directory, rut, identifier)
 
@@ -218,11 +223,14 @@ def pending(directory, rut=None):
     return [_draft(row) for row in rows]
 
 
-def resolve(directory, identifier, status, reference=None):
+def resolve(directory, identifier, status, reference=None, rut=None):
     if status not in ESTADOS_FINALES:
         raise TeamError(tr('error.invalid_choice'))
     if reference is not None:
         reference = CONTROL.sub('', str(reference)).strip()[:300] or None
+    draft = get_draft(directory, identifier)
+    if rut and draft['rut'] != base.normalize_rut(rut):
+        raise TeamError(tr('outbox.not_found'))
     with estado.connect(directory) as connection:
         changed = connection.execute(
             "UPDATE correo_salida SET estado = ?, resuelto_utc = ?, referencia = ? WHERE id = ? AND estado = 'pendiente'",
@@ -230,7 +238,6 @@ def resolve(directory, identifier, status, reference=None):
         )
         connection.commit()
     if not changed.rowcount:
-        get_draft(directory, identifier)
         raise TeamError(tr('outbox.already_resolved'))
     return get_draft(directory, identifier)
 

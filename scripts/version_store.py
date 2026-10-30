@@ -7,6 +7,9 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
+
+LOCK_WAIT_SECONDS = 3.0
 
 class VersionError(ValueError):
     pass
@@ -48,20 +51,50 @@ def atomic_write(path, content):
             temp.unlink()
 
 
+def lock_owner_alive(lock):
+    """True si el proceso dueño sigue vivo, False si terminó, None si no se puede saber."""
+    try:
+        pid = json.loads(Path(lock).read_text(encoding='utf-8')).get('pid')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if type(pid) is not int or pid <= 0:
+        return None
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return None
+
+
 @contextmanager
-def write_lock(path):
+def write_lock(path, wait=None):
+    """Bloqueo exclusivo por perfil: espera brevemente y retira bloqueos de procesos terminados."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     lock = path.parent / '.write.lock'
+    deadline = time.monotonic() + (LOCK_WAIT_SECONDS if wait is None else wait)
+    while True:
+        try:
+            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            break
+        except FileExistsError:
+            if lock_owner_alive(lock) is False:
+                # El proceso que lo creó ya no existe: el bloqueo quedó de una caída.
+                lock.unlink(missing_ok=True)
+                continue
+            if time.monotonic() >= deadline:
+                raise VersionError('La empresa tiene otra escritura en curso. No se guardaron cambios; reintenta en unos segundos.') from None
+            time.sleep(0.1)
     try:
-        fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
-    except FileExistsError:
-        raise VersionError('La empresa tiene otra escritura en curso. No se guardaron cambios.') from None
-    try:
+        os.write(fd, json.dumps({'pid': os.getpid(), 'creado_utc': datetime.now(timezone.utc).isoformat()}).encode('utf-8'))
         os.close(fd)
         yield
     finally:
-        lock.unlink()
+        lock.unlink(missing_ok=True)
 
 
 def revision_path(path, identifier):

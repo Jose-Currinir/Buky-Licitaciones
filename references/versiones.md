@@ -18,7 +18,7 @@ python3 "<SKILL_DIR>/scripts/base_empresa.py" --data-dir "<DATA_DIR>" hecho --ru
 python3 "<SKILL_DIR>/scripts/base_empresa.py" --data-dir "<DATA_DIR>" restaurar --rut "<RUT>" --revision "<REVISION>" --autor usuario --motivo "Recupera perfil anterior a corrección errónea"
 ```
 
-Restaurar requiere petición concreta; crea una revisión nueva y conserva todas las anteriores. Se comprueban integridad y empresa. Escrituras simultáneas se bloquean y se rechaza una base leída antes de un cambio ajeno. Un .write.lock residual tras un cierre abrupto exige comprobar que no siga otro proceso antes de retirarlo; no borrarlo automáticamente. Snapshots no referenciados tras un fallo no forman parte de la cadena activa; no borrarlos ni adoptarlos a ciegas. Si la integridad falla, detener escrituras y recuperar un respaldo verificado.
+Restaurar requiere petición concreta; crea una revisión nueva y conserva todas las anteriores. Se comprueban integridad y empresa. Escrituras simultáneas se bloquean y se rechaza una base leída antes de un cambio ajeno. Una escritura espera unos segundos si otra está en curso. El `.write.lock` guarda el proceso que lo creó: si ese proceso ya no existe, se retira solo; uno sin esos datos (de versiones anteriores) exige comprobar que no siga otro proceso antes de retirarlo a mano. Snapshots no referenciados tras un fallo no forman parte de la cadena activa; no borrarlos ni adoptarlos a ciegas. Si la integridad falla, detener escrituras y recuperar un respaldo verificado.
 
 ## Versiones de documentos
 

@@ -89,17 +89,44 @@ def add_document(directory, rut, identifier, source, origin, reason, author='usu
             temp.unlink()
 
 
-def document_records(directory, rut):
-    path = base.path_for(directory, rut)
-    data = base.load(directory, rut)
-    records = {}
-    for meta in versions.history(path):
-        snapshot = versions.read_revision(path, meta['id'])
+def _walk_documents(path, head, stop, records):
+    """Recorre revisiones desde `head` hasta `stop`; devuelve False si `stop` no está en la cadena."""
+    identifier = head
+    while identifier and identifier != stop:
+        snapshot = versions.read_revision(path, identifier)
         for document in snapshot.get('documentos', []):
             records[versions.canonical(document)] = document
+        identifier = snapshot['_version']['anterior']
+    return stop is None or identifier == stop
+
+
+def document_records(directory, rut, full=False):
+    """Todas las versiones documentales del historial. Usa un índice incremental salvo con `full`."""
+    path = base.path_for(directory, rut)
+    data = base.load(directory, rut)
+    index = path.parent / 'documentos' / 'indice.json'
+    head = data.get('_version', {}).get('id')
+    records, stop = {}, None
+    if not full and index.is_file() and not index.is_symlink():
+        try:
+            cached = json.loads(index.read_text(encoding='utf-8'))
+            stop = cached['hasta']
+            for document in cached['documentos']:
+                records[versions.canonical(document)] = document
+        except (OSError, ValueError, KeyError, TypeError):
+            records, stop = {}, None
+    if not _walk_documents(path, head, stop, records):
+        records = {}
+        _walk_documents(path, head, None, records)
+    if full:
+        versions.history(path)
     for document in data.get('documentos', []):
         records[versions.canonical(document)] = document
-    return sorted(records.values(), key=lambda d: (d['id'], d['version']))
+    result = sorted(records.values(), key=lambda d: (d['id'], d['version']))
+    if head:
+        index.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+        versions.atomic_write(index, json.dumps({'hasta': head, 'documentos': result}, ensure_ascii=False).encode('utf-8'))
+    return result
 
 
 def all_documents(directory, rut):
@@ -109,7 +136,7 @@ def all_documents(directory, rut):
 def verify(directory, rut):
     path = base.path_for(directory, rut)
     chain = versions.history(path)
-    documents = all_documents(directory, rut)
+    documents = {d['sha256']: d for d in document_records(directory, rut, full=True)}
     for sha, document in documents.items():
         target = blob_path(directory, rut, sha)
         if target.is_symlink() or not target.is_file() or file_hash(target) != sha or target.stat().st_size != document['bytes']:

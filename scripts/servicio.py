@@ -126,7 +126,12 @@ def instance_lock(directory):
             raise ServiceError(tr('service.lock_invalid')) from None
         if process_alive(metadata.get('pid')):
             raise ServiceError(tr('service.lock_active'))
-        raise ServiceError(tr('service.lock_stale'))
+        # El proceso anterior terminó sin limpiar: se retira el bloqueo y se reintenta una vez.
+        path.unlink(missing_ok=True)
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        except FileExistsError:
+            raise ServiceError(tr('service.lock_active')) from None
     try:
         with os.fdopen(fd, 'w', encoding='utf-8') as out:
             json.dump({'pid': os.getpid(), 'instancia': uuid.uuid4().hex, 'creado_utc': base.utc_now()}, out)
@@ -162,9 +167,9 @@ def run_once(directory, synchronize=None, notifier=None, now=None, use_lock=True
                         due = should_sync(connection, rut, now)
                     if due:
                         import buky
-                        from viabilidad import latest_facts
+                        from viabilidad import catalog_raw, latest_facts
                         facts = latest_facts(base.load(directory, rut))
-                        catalog = facts.get('catalogo') or facts.get('catalogo_confirmado') or []
+                        catalog = catalog_raw(facts)
                         if isinstance(catalog, str):
                             catalog = [catalog]
                         queries = [str(value) for value in catalog[:10]]
@@ -271,12 +276,36 @@ def run_checked(command):
         raise ServiceError(tr('service.system_change_failed'))
 
 
-def enable(directory, system=None, runner=None):
+LAUNCH_LABEL = 'cl.butake.licitaciones'
+
+
+def launch_agents_dir():
+    return Path.home() / 'Library' / 'LaunchAgents'
+
+
+def enable(directory, system=None, runner=None, agents_dir=None):
     runner = runner or run_checked
     info = definition(directory, system=system)
     system = info['sistema']
     if system == 'Darwin':
-        runner(['launchctl', 'bootstrap', f'gui/{os.getuid()}', info['archivo']])
+        # launchd solo vuelve a cargar al iniciar sesión los agentes de ~/Library/LaunchAgents.
+        target = Path(agents_dir or launch_agents_dir()) / (LAUNCH_LABEL + '.plist')
+        version_store.atomic_write(target, Path(info['archivo']).read_bytes())
+        os.chmod(target, 0o644)
+        try:
+            runner(['launchctl', 'bootout', f'gui/{os.getuid()}/{LAUNCH_LABEL}'])
+        except ServiceError:
+            pass  # No estaba cargado: es el caso normal en la primera habilitación.
+        for attempt in range(3):
+            try:
+                runner(['launchctl', 'bootstrap', f'gui/{os.getuid()}', str(target)])
+                break
+            except ServiceError:
+                # Tras un bootout, launchd puede tardar un momento en liberar el servicio.
+                if attempt == 2:
+                    raise
+                time.sleep(1)
+        info['archivo'] = str(target)
     elif system == 'Linux':
         runner(['systemctl', '--user', 'daemon-reload'])
         runner(['systemctl', '--user', 'enable', '--now', info['archivo']])
@@ -288,12 +317,16 @@ def enable(directory, system=None, runner=None):
     return {'estado': 'habilitado', **info}
 
 
-def disable(directory, system=None, runner=None):
+def disable(directory, system=None, runner=None, agents_dir=None):
     runner = runner or run_checked
     system = system or platform.system()
     info = {'sistema': system}
     if system == 'Darwin':
-        runner(['launchctl', 'bootout', f'gui/{os.getuid()}/cl.butake.licitaciones'])
+        try:
+            runner(['launchctl', 'bootout', f'gui/{os.getuid()}/{LAUNCH_LABEL}'])
+        except ServiceError:
+            pass  # Ya estaba detenido; igual se retira del inicio de sesión.
+        (Path(agents_dir or launch_agents_dir()) / (LAUNCH_LABEL + '.plist')).unlink(missing_ok=True)
     elif system == 'Linux':
         runner(['systemctl', '--user', 'disable', '--now', 'buky-licitaciones.service'])
     elif system == 'Windows':

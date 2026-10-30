@@ -31,31 +31,51 @@ def _id(rut, process, kind, due):
     return hashlib.sha256(raw).hexdigest()[:32]
 
 
-def add(directory, rut, title, due, detail='', process=None, kind='manual', available=None):
+def valid_kind(kind):
+    if kind in {'manual', 'cierre_proximo'}:
+        return True
+    if not isinstance(kind, str) or not kind.startswith('cierre_'):
+        return False
+    try:
+        return 0 < float(kind.removeprefix('cierre_')) < 100000
+    except ValueError:
+        return False
+
+
+def add(directory, rut, title, due, detail='', process=None, kind='manual', available=None, key=None):
+    """Crea un aviso idempotente. `key` fija la identidad cuando la fecha de entrega varía."""
     rut = base.normalize_rut(rut)
     if not isinstance(title, str) or not title.strip() or len(title) > 500:
         raise ReminderError(tr('reminder.title_required'))
-    valid_kind = kind in {'manual', 'cierre_proximo'}
-    if kind.startswith('cierre_'):
-        try:
-            valid_kind = 0 < float(kind.removeprefix('cierre_')) < 100000
-        except ValueError:
-            valid_kind = False
-    if not valid_kind:
+    if not valid_kind(kind):
         raise ReminderError(tr('reminder.kind_unknown'))
     due = _utc(due)
     available = _utc(available or due)
-    identifier = _id(rut, process, kind, due)
+    if key is None:
+        # Dos avisos manuales a la misma hora con distinto texto son avisos distintos.
+        key = due + '\0' + title.strip() if kind == 'manual' else due
+    identifier = _id(rut, process, kind, key)
     now = base.utc_now()
     with estado.connect(directory) as connection:
-        connection.execute(
+        inserted = connection.execute(
             'INSERT INTO recordatorios(id, rut, proceso, tipo, titulo, detalle, vence_utc, disponible_utc, creado_utc) '
             'VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(id) DO NOTHING',
             (identifier, rut, process, kind, title.strip(), str(detail or '')[:2000], due, available, now),
-        )
+        ).rowcount
         connection.commit()
         row = connection.execute('SELECT * FROM recordatorios WHERE id = ?', (identifier,)).fetchone()
-    return dict(row)
+    return dict(row, creado=bool(inserted))
+
+
+def wants_closing_alerts(item, evaluation):
+    """Avisa lo que vale la pena: decisión participar, condicionada con buen ajuste o seguida por el usuario."""
+    if (item.get('seguimiento') or {}).get('activo') is False:
+        return False
+    if (item.get('seguimiento') or {}).get('activo'):
+        return evaluation['decision'] != 'no_participar'
+    if evaluation['decision'] == 'participar':
+        return True
+    return evaluation['decision'] == 'participar_condicionado' and evaluation['ajuste_comercial'] in {'alto', 'medio'}
 
 
 def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
@@ -67,7 +87,7 @@ def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
     created = 0
     for item in company['oportunidades'].values():
         evaluation = viability.evaluate(item, company, now)
-        if evaluation['decision'] == 'no_participar' or not item.get('fecha_cierre'):
+        if not item.get('fecha_cierre') or not wants_closing_alerts(item, evaluation):
             continue
         closing = base.moment(item['fecha_cierre'])
         if closing <= now or evaluation['etapa'] not in {'abiertas', 'por_cerrar'}:
@@ -86,11 +106,11 @@ def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
         for hours, due in scheduled:
             kind = f'cierre_{hours}' if hours != 'proximo' else 'cierre_proximo'
             due_utc = _utc(due)
-            desired.add(_id(rut, item['codigo'], kind, due_utc))
-            before = count_pending(directory, rut)
-            add(directory, rut, item['nombre'], due_utc, detail=f'Cierre: {item["fecha_cierre"]} · {item["codigo"]}', process=item['codigo'], kind=kind)
-            after = count_pending(directory, rut)
-            created += max(0, after - before)
+            # El aviso inmediato se identifica por el cierre, no por «ahora», para no repetirse en cada ciclo.
+            key = 'cierre:' + _utc(closing) if hours == 'proximo' else due_utc
+            desired.add(_id(rut, item['codigo'], kind, key))
+            saved = add(directory, rut, item['nombre'], due_utc, detail=f'Cierre: {item["fecha_cierre"]} · {item["codigo"]}', process=item['codigo'], kind=kind, key=key)
+            created += saved['creado']
     cancelled = 0
     with estado.connect(directory) as connection:
         rows = connection.execute(

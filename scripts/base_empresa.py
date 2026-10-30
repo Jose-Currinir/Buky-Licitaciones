@@ -19,8 +19,8 @@ class DataError(ValueError):
 def normalize_rut(value):
     if not isinstance(value, str):
         raise DataError('RUT inválido: se requiere texto con dígito verificador.')
-    clean = value.strip().upper().replace('.', '').replace('-', '')
-    if not re.fullmatch(r'[0-9]{1,8}[0-9K]', clean) or int(clean[:-1]) == 0:
+    clean = re.sub(r'[\s.\-]', '', value).upper()
+    if not re.fullmatch(r'[0-9]{1,10}[0-9K]', clean) or int(clean[:-1]) == 0 or int(clean[:-1]) > 99_999_999:
         raise DataError('RUT inválido: verifica formato y dígito verificador.')
     body = str(int(clean[:-1]))
     total = sum(int(d) * (2 + i % 6) for i, d in enumerate(reversed(body)))
@@ -58,7 +58,8 @@ def positive_hours(value):
     return value
 
 
-CLOSED = {'cerrada', 'adjudicada', 'desierta', 'cancelada', 'revocada', 'proveedor_seleccionado', 'oc_emitida', '6', '7', '8', '18'}
+# Códigos v1 verificados con la API el 30-10-2026: 5 publicada, 6 cerrada, 7 desierta, 8 adjudicada, 15 revocada.
+CLOSED = {'cerrada', 'adjudicada', 'desierta', 'cancelada', 'revocada', 'proveedor_seleccionado', 'oc_emitida', '6', '7', '8', '15', '18'}
 OPEN = {'publicada', 'abierta', '5'}
 SUSPENDED = {'suspendida', '19'}
 
@@ -174,6 +175,11 @@ def load(directory, rut):
 
 
 def save(directory, data, create=False, reason='actualizar base', author='asistente'):
+    root = Path(directory).expanduser()
+    if not root.exists():
+        # El directorio de datos lista RUT, que en personas naturales son datos personales.
+        root.mkdir(parents=True, mode=0o700)
+        os.chmod(root, 0o700)
     try:
         versions.commit(path_for(directory, data['rut']), data, create=create, reason=reason, author=author)
     except versions.VersionError as error:
@@ -206,6 +212,35 @@ def source_record(item):
     moment(item.get('consultado_en'))
 
 
+# Campos que aporta el usuario o el asistente; una observación oficial nueva no los trae.
+ANNOTATION_FIELDS = ('requisitos', 'margen_estimado', 'costos', 'notas', 'seguimiento')
+
+
+# Versiones anteriores que se conservan por oportunidad dentro de la base; el historial completo
+# sigue disponible en los snapshots.
+MAX_ITEM_VERSIONS = 5
+
+
+def official_view(item):
+    return {key: value for key, value in item.items() if key not in ANNOTATION_FIELDS}
+
+
+def material_view(item):
+    """Contenido de negocio: ignora anotaciones y metadatos de la consulta."""
+    return {key: value for key, value in official_view(item).items() if key not in {'consultado_en', 'fuente'}}
+
+
+def _prune_versions(data, key):
+    kept, seen = [], 0
+    for old in reversed(data['versiones']):
+        if isinstance(old, dict) and old.get('mecanismo', '') + ':' + old.get('codigo', '') == key:
+            seen += 1
+            if seen > MAX_ITEM_VERSIONS:
+                continue
+        kept.append(old)
+    data['versiones'] = list(reversed(kept))
+
+
 def merge_items(data, items):
     if not isinstance(items, list):
         raise DataError('La importación requiere una lista JSON.')
@@ -226,20 +261,34 @@ def merge_items(data, items):
             raise DataError('Lote con código/mecanismo duplicado.')
         keys.add(key)
         old = data['oportunidades'].get(key)
-        if old and moment(item['consultado_en']) == moment(old['consultado_en']) and item != old:
+        if old and moment(item['consultado_en']) == moment(old['consultado_en']) and official_view(item) != official_view(old):
             raise DataError('Observaciones distintas con la misma fecha; revisa el conflicto.')
-    updated = skipped = 0
+    updated = skipped = unchanged = 0
     for item in items:
         key = item['mecanismo'] + ':' + item['codigo']
         old = data['oportunidades'].get(key)
         if old and moment(item['consultado_en']) <= moment(old['consultado_en']):
             skipped += 1
             continue
+        incoming = material_view(item)
+        if old and incoming == {field: material_view(old).get(field) for field in incoming}:
+            # Misma información oficial (o un listado con menos campos que el detalle guardado):
+            # no se crea versión ni revisión. `consultado_en` conserva cuándo se observó ese contenido;
+            # la última verificación queda en el cursor `ultima_sincronizacion`.
+            unchanged += 1
+            continue
+        merged = item.copy()
         if old:
             data['versiones'].append(old)
-        data['oportunidades'][key] = item.copy()
+            _prune_versions(data, key)
+            # Conserva anotaciones y campos oficiales que la nueva observación no trae
+            # (el listado v1 omite comprador, descripción y productos del detalle).
+            for field, value in old.items():
+                if field not in merged:
+                    merged[field] = value
+        data['oportunidades'][key] = merged
         updated += 1
-    return {'actualizadas': updated, 'omitidas': skipped}
+    return {'actualizadas': updated, 'omitidas': skipped, 'sin_cambios': unchanged}
 
 
 def update_preferences(data, incoming):

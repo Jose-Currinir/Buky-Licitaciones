@@ -12,6 +12,16 @@ GET listado; GET /{codigo} detalle. Header ticket. Filtros: q o id (excluyentes)
 
 No hay filtro codigo_organismo en v2; filtrar localmente. La existencia de orden_compra.id_orden_compra es mejor indicador de OC emitida que asumir el estado oc_emitida. Campos de documentos pueden aportar solo id/nombre: no inventar URLs de descarga. La visibilidad de cotizaciones depende de etapa/llamado.
 
+## Comportamiento real observado (30-10-2026, con ticket)
+
+- **v2 Compra Ágil**: `tamano_pagina` debe estar entre 10 y 50 (la API responde 400 con 1–9). Sin `estado`, una búsqueda devuelve hasta 10.000 resultados; con `estado=publicada` (lo que usa la sincronización) bajan a decenas. Cada solicitud tardó entre 12 y 18 s, y hubo respuestas 504 que se resolvieron reintentando.
+- **v2, campos**: vienen anidados (`estado.codigo`, `fechas.fecha_cierre`, `institucion.organismo_comprador`, `institucion.nombre_region`, `montos.monto_disponible_clp`, `convocatoria.estado_convocatoria`, `resumen.total_ofertas_recibidas`, `documentos[].nombre`). `fechas.fecha_cierre` viene sin zona (hora de Chile), mientras `fecha_cierre_primer_llamado` rotula esa misma hora local como `Z`: no la uses como UTC.
+- **v1 Licitaciones**: el listado por fecha trae solo `CodigoExterno`, `Nombre`, `CodigoEstado` y `FechaCierre` (sin zona) para más de 1.000 procesos por día. El detalle por código agrega comprador, comuna, región, descripción, tipo e ítems con categoría. Estados verificados: 5 publicada, 6 cerrada, 7 desierta, 8 adjudicada, 15 revocada.
+- **Cuota**: la guía describe el 429 como cuota **diaria** agotada, que se repone al cambiar el día calendario. En la prueba apareció un 429 tras unas 35 solicitudes del día, así que la cuota real de un ticket puede ser mucho menor que 10.000: sincroniza con pocos términos y bien elegidos.
+- La región de `institucion` y de `Comprador` es la del **comprador**; se guarda como `region_comprador`, nunca como región de entrega.
+
+La sincronización de licitaciones por fecha descarta las cerradas y las ajenas al catálogo, y trae el detalle de hasta 20 procesos.
+
 ## Consumo y límites
 
 Las condiciones generales publicadas fijan 10.000 solicitudes/día por ticket, monitoreo también por IP y recomiendan las descargas masivas entre 22:00 y 07:00. La guía v2 menciona cuotas por tipo: aplicar 10.000 como referencia conservadora y confirmar con soporte antes de asumir otra. Cada página, detalle y reintento consume solicitudes. No eludir límites con tickets, IPs o clientes paralelos.
@@ -22,7 +32,7 @@ Las condiciones generales publicadas fijan 10.000 solicitudes/día por ticket, m
 - Una respuesta reutilizada conserva `consultado_en` original y se cuenta en `respuestas_cache`; nunca se presenta como una observación nueva. Un acierto de caché no hace red. Los contadores `solicitudes_reales` y `reintentos` permiten revisar el consumo local, no el saldo oficial del ticket.
 - Presupuesto local de 100 intentos reales por sincronización manual y 25 por perfil en el servicio. Incluye reintentos y frena el lote al agotarse; no es una cuota adicional ni reemplaza el límite oficial.
 - Como máximo tres intentos por solicitud para errores de red, timeout y HTTP 500/502/503/504, con esperas exponenciales de 1 y 2 segundos además del ritmo. No reintentar 400/401/403/404: corregir filtros, credencial o código según corresponda.
-- HTTP 429 nunca se reintenta. Se detiene todo el lote y se guarda `api:no_antes_de` en SQLite para que otras consultas y perfiles no vuelvan a llamar durante el enfriamiento. Se respeta `Retry-After` en segundos o fecha HTTP. Si falta, se programa el próximo día UTC a las 00:01 como pausa operativa basada en el ejemplo de la guía; no se garantiza que esa sea la hora efectiva de reposición. Una caché vigente puede seguir utilizándose sin red.
+- HTTP 429 nunca se reintenta. Se detiene todo el lote y se guarda `api:no_antes_de` en SQLite para que otras consultas y perfiles no vuelvan a llamar durante el enfriamiento. Se respeta `Retry-After` en segundos o fecha HTTP. Si falta, se pausa hasta el más tardío entre las 00:01 UTC del día siguiente (ejemplo de la guía) y las 00:01 del día siguiente en Chile; no se garantiza que esa sea la hora efectiva de reposición. Una caché vigente puede seguir utilizándose sin red.
 
 Cada página válida de Compra Ágil se conserva de inmediato con su fuente, advertencias y registros omitidos. Si falla la siguiente, los datos anteriores siguen disponibles y los conteos los incluyen. Guardar una página no marca completa la ventana ni el cursor incremental. El resultado informa `cobertura`, `consultas_pendientes`, `detenida_por_cuota`, `presupuesto_agotado` y `reintentar_en`; no ocultar una cobertura parcial ni repetir de inmediato la misma sincronización.
 

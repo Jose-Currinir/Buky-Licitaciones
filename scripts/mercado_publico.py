@@ -77,8 +77,8 @@ def make_request(a, ticket):
             raise ApiError('--fecha es exclusivo de v1; usa fechas de cambio para v2.')
         if a.codigo and any([a.q, a.estado, a.region, a.cambio_desde, a.cambio_hasta, a.pagina != 1, a.tamano != 50]):
             raise ApiError('El detalle por código no admite filtros de listado.')
-        if not 1 <= a.tamano <= 50 or a.pagina < 1:
-            raise ApiError('Paginación inválida: página >= 1 y tamaño entre 1 y 50.')
+        if not 10 <= a.tamano <= 50 or a.pagina < 1:
+            raise ApiError('Paginación inválida: página >= 1 y tamaño entre 10 y 50 (límite de la API).')
         if bool(a.cambio_desde) != bool(a.cambio_hasta):
             raise ApiError('Indica ambos límites de la ventana de cambios.')
         if a.cambio_desde and iso_date(a.cambio_desde) >= iso_date(a.cambio_hasta):
@@ -149,9 +149,14 @@ def retry_time(value, now=None):
 
 
 def quota_pause(now=None):
-    # Pausa operativa, no una promesa sobre la hora oficial de reposición.
+    # Pausa operativa, no una promesa sobre la hora oficial de reposición: se espera hasta el más
+    # tardío entre las 00:01 UTC del ejemplo de la guía y las 00:01 del día siguiente en Chile.
+    from zoneinfo import ZoneInfo
     now = _utc(now)
-    return _iso((now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0))
+    utc_resume = (now + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+    local = now.astimezone(ZoneInfo('America/Santiago'))
+    chile_resume = (local + timedelta(days=1)).replace(hour=0, minute=1, second=0, microsecond=0)
+    return _iso(max(utc_resume, chile_resume.astimezone(timezone.utc)))
 
 
 def fetch(request, opener=None, now_fn=None):

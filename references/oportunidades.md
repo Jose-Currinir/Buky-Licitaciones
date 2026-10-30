@@ -23,14 +23,22 @@ Procesos actuales: APIs v1/v2, ficha y modificaciones oficiales. Futuro: PAC y a
 ## Consulta habitual
 
 1. Cargar el perfil elegido, su tipo, catálogo y preferencias guardadas. En persona natural, distinguir exploración de habilitación para ofertar según el estado de inicio de actividades.
-2. Buscar por familias/sinónimos y ampliar si la cobertura es insuficiente; obtener detalle cuando el listado no tenga campos necesarios. Deduplicar términos y aprovechar caché sin cambiar la fecha original de consulta. No reintentar tras 429 ni agotar el presupuesto local.
-3. Deduplicar por mecanismo/código, guardar cada página válida, sus fuentes, versiones y estado oficial antes de continuar. Si una página falla, conservar las anteriores e informar cobertura/parcialidad y términos pendientes. Reconciliar cierres/modificaciones, no solo nuevas publicaciones.
+2. Buscar por familias/sinónimos y ampliar si la cobertura es insuficiente; obtener detalle cuando el listado no tenga campos necesarios. Las reglas de cuota, caché y páginas parciales están en [api.md](api.md).
+3. Reconciliar cierres y modificaciones, no solo nuevas publicaciones, e informar cobertura y términos pendientes.
 4. Filtrar por mecanismo, rubro, región de entrega (no confundir con región del comprador), comprador, monto/moneda, elegibilidad, plazo y exclusiones. Desconocidos de un filtro explícito van a pendientes, no pasan silenciosamente.
 5. Omitir cerradas y suspendidas por defecto. Recalcular etapas con fechas verificadas. Mostrar separadas planificadas, futuras, abiertas y por cerrar; informar cuántas quedaron por verificar.
 6. Ordenar por afinidad y factibilidad y, dentro de urgencia comparable, por cierre. Explicar por qué coincide, bloqueos y esfuerzo. Urgencia no vuelve viable una oferta imposible.
+
+## Cuando el usuario trae un código
+
+```bash
+python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json evaluar --rut "<RUT>" --codigo "<CODIGO>" --sincronizar
+```
+
+Trae el detalle oficial (Compra Ágil si el código termina en `-COTaa`; licitación v1 en los demás casos), lo guarda y lo evalúa. Sin ticket, el error indica el comando de configuración; mientras tanto, trabaja con la ficha o las bases que aporte el usuario. Después registra los requisitos de las bases con `requisito agregar`.
 
 Comandos naturales: «busca oportunidades», «aún no comienzan», «comenzaron», «por cerrar en 48 horas», «omite cerradas», «incluye cerradas», «solo Compra Ágil», «excluye este rubro». Persistir preferencias cuando el usuario las establezca. Incluir cerradas para histórico no cambia por sí solo el filtro habitual de oportunidades.
 
 Ficha por oportunidad: código/identificador de planificación, título, mecanismo, comprador, presupuesto y base tributaria, entrega, estado oficial, etapa derivada, apertura/cierre con zona, tiempo restante, afinidad explicada, requisitos pendientes, enlace, última consulta y cobertura. No prometer postulación o disponibilidad si no hay fecha/estado verificados.
 
-El script local clasifica JSON normalizado y filtra cerradas. El asistente adapta los campos originales con trazabilidad; el script no infiere una zona horaria ni transforma planes en procesos reales.
+El script local clasifica JSON normalizado y filtra cerradas. El asistente adapta los campos originales con trazabilidad. Cuando la API entrega una fecha sin zona, se interpreta como hora de Chile, se informa como advertencia y se marca en `zona_inferida`; menciónalo si la hora exacta del cierre importa. El script no transforma planes en procesos reales.

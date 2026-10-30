@@ -72,6 +72,16 @@ CREATE INDEX IF NOT EXISTS idx_correo_salida_pendientes
 '''
 
 
+class ClosingConnection(sqlite3.Connection):
+    """Al salir de `with` confirma o revierte y además cierra, evitando conexiones abiertas."""
+
+    def __exit__(self, kind, value, traceback):
+        try:
+            return super().__exit__(kind, value, traceback)
+        finally:
+            self.close()
+
+
 def database_path(directory):
     return Path(directory).expanduser().resolve() / 'estado.sqlite3'
 
@@ -80,7 +90,7 @@ def connect(directory):
     directory = Path(directory).expanduser().resolve()
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     path = database_path(directory)
-    connection = sqlite3.connect(path, timeout=30)
+    connection = sqlite3.connect(path, timeout=30, factory=ClosingConnection)
     connection.row_factory = sqlite3.Row
     connection.execute('PRAGMA foreign_keys = ON')
     connection.execute('PRAGMA journal_mode = WAL')

@@ -31,6 +31,9 @@ PROVIDERS = {
         'scope': 'https://www.googleapis.com/auth/gmail.readonly',
         'api': 'https://gmail.googleapis.com',
         'client_env': 'BUKY_GMAIL_CLIENT_ID',
+        # Google exige el «client secret» incluso en clientes de escritorio; para ese tipo de
+        # aplicación no es confidencial, pero igual se guarda solo en el almacén seguro.
+        'secret_env': 'BUKY_GMAIL_CLIENT_SECRET',
     },
     'microsoft': {
         'authorize': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
@@ -270,11 +273,16 @@ def connect(directory, provider, email, client_id=None, opener=None, transport=N
         code = wait_for_callback(server, state, timeout)
     finally:
         server.server_close()
-    token = _request(PROVIDERS[provider]['token'], transport, form={
+    form = {
         'client_id': client_id, 'code': code, 'code_verifier': verifier,
         'redirect_uri': redirect_uri, 'grant_type': 'authorization_code',
-    })
-    token = normalize_token(provider, token)
+    }
+    client_secret = os.environ.get(PROVIDERS[provider].get('secret_env', ''), '').strip()
+    if client_secret:
+        form['client_secret'] = client_secret
+    token = normalize_token(provider, _request(PROVIDERS[provider]['token'], transport, form=form))
+    if client_secret:
+        token['client_secret'] = client_secret
     name = secretos.account_name(provider, account['correo'])
     secretos.save_json(store, name, token)
     config = load_config(directory)
@@ -297,10 +305,15 @@ def access_token(directory, account, store=None, transport=None):
     if not isinstance(token.get('refresh_token'), str) or not token['refresh_token']:
         raise MailError(tr('mail.reconnect'))
     provider = account['proveedor']
-    payload = _request(PROVIDERS[provider]['token'], transport, form={
-        'client_id': account['client_id'], 'refresh_token': token['refresh_token'], 'grant_type': 'refresh_token',
-    })
+    form = {'client_id': account['client_id'], 'refresh_token': token['refresh_token'], 'grant_type': 'refresh_token'}
+    client_secret = token.get('client_secret') or os.environ.get(PROVIDERS[provider].get('secret_env', ''), '').strip()
+    if client_secret:
+        form['client_secret'] = client_secret
+    payload = _request(PROVIDERS[provider]['token'], transport, form=form)
+    previous_secret = token.get('client_secret')
     token = normalize_token(provider, payload, token)
+    if previous_secret or client_secret:
+        token['client_secret'] = previous_secret or client_secret
     secretos.save_json(store, name, token)
     return token['access_token']
 
@@ -506,9 +519,49 @@ def matches_filters(account, subject, sender):
 
 
 def known_message(directory, provider, message_id):
+    """Estado registrado del mensaje (incluido «filtrado»), o None si nunca se vio."""
     with estado.connect(directory) as connection:
-        row = connection.execute('SELECT 1 FROM correo_eventos WHERE proveedor = ? AND mensaje_id = ?', (provider, message_id)).fetchone()
-    return bool(row)
+        row = connection.execute('SELECT estado FROM correo_eventos WHERE proveedor = ? AND mensaje_id = ?', (provider, message_id)).fetchone()
+    return row['estado'] if row else None
+
+
+def record_filtered(directory, provider, message_id):
+    """Recuerda mensajes fuera de los filtros para no volver a descargarlos en cada sincronización."""
+    now = base.utc_now()
+    with estado.connect(directory) as connection:
+        connection.execute(
+            "INSERT INTO correo_eventos(proveedor, mensaje_id, rut, recibido_utc, sha256, estado, archivo, creado_utc) "
+            "VALUES(?, ?, NULL, ?, '', 'filtrado', '', ?) ON CONFLICT(proveedor, mensaje_id) DO NOTHING",
+            (provider, message_id, now, now),
+        )
+        connection.commit()
+
+
+def forget_filtered(directory, provider):
+    """Al cambiar filtros, los mensajes descartados vuelven a evaluarse."""
+    with estado.connect(directory) as connection:
+        connection.execute("DELETE FROM correo_eventos WHERE proveedor = ? AND estado = 'filtrado'", (provider,))
+        connection.commit()
+
+
+def _save_sweep(directory, prefix, next_page, newest, later):
+    """Guarda la página siguiente y el máximo visto en todo el barrido.
+
+    Los listados vienen del más nuevo al más antiguo: el corte `despues` solo avanza al terminar
+    el barrido y con el máximo de todas sus páginas, nunca con el de la última.
+    """
+    with estado.connect(directory) as connection:
+        best = estado.get_cursor(connection, prefix + 'maximo') or ''
+        if newest and later(newest, best):
+            best = newest
+        if next_page:
+            estado.set_cursor(connection, prefix + 'pagina', next_page)
+            estado.set_cursor(connection, prefix + 'maximo', best)
+        else:
+            estado.set_cursor(connection, prefix + 'pagina', '')
+            estado.set_cursor(connection, prefix + 'maximo', '')
+            if best:
+                estado.set_cursor(connection, prefix + 'despues', best)
 
 
 def safe_api_url(provider, value):
@@ -527,7 +580,7 @@ def sync_gmail(directory, account, store=None, transport=None):
         after = estado.get_cursor(connection, prefix + 'despues')
     query = '{' + ' '.join('"' + value.replace('"', '') + '"' for value in account['palabras']) + '}'
     if account.get('remitentes'):
-        query += ' {' + ' '.join('from:' + value for value in account['remitentes']) + '}'
+        query += ' {' + ' '.join('from:"' + value.replace('"', '') + '"' for value in account['remitentes']) + '}'
     query += ' after:' + after if after else f" newer_than:{account['dias_iniciales']}d"
     params = {'q': query.strip(), 'maxResults': account['max_mensajes']}
     if page:
@@ -542,11 +595,27 @@ def sync_gmail(directory, account, store=None, transport=None):
         identifier = entry.get('id') if isinstance(entry, dict) else None
         if not isinstance(identifier, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,200}', identifier):
             raise MailError(tr('mail.invalid_response'))
-        if known_message(directory, provider, identifier):
-            duplicates += 1
+        seen = known_message(directory, provider, identifier)
+        if seen:
+            ignored += seen == 'filtrado'
+            duplicates += seen != 'filtrado'
             continue
-        resource = PROVIDERS[provider]['api'] + '/gmail/v1/users/me/messages/' + parse.quote(identifier, safe='') + '?format=raw'
-        payload = _request(resource, transport, headers={'Authorization': 'Bearer ' + token})
+        message_url = PROVIDERS[provider]['api'] + '/gmail/v1/users/me/messages/' + parse.quote(identifier, safe='')
+        # Primero solo encabezados: un mensaje fuera de los filtros no se descarga completo.
+        metadata = _request(message_url + '?' + parse.urlencode([('format', 'metadata'), ('metadataHeaders', 'Subject'), ('metadataHeaders', 'From')]),
+                            transport, headers={'Authorization': 'Bearer ' + token})
+        headers = {}
+        if isinstance(metadata, dict) and isinstance((metadata.get('payload') or {}).get('headers'), list):
+            headers = {str(item.get('name', '')).lower(): item.get('value') for item in metadata['payload']['headers'] if isinstance(item, dict)}
+        try:
+            newest = max(newest, int((metadata or {}).get('internalDate', '0')) // 1000)
+        except (ValueError, TypeError, AttributeError):
+            pass
+        if headers and not matches_filters(account, headers.get('subject'), headers.get('from')):
+            record_filtered(directory, provider, identifier)
+            ignored += 1
+            continue
+        payload = _request(message_url + '?format=raw', transport, headers={'Authorization': 'Bearer ' + token})
         if not isinstance(payload, dict) or not isinstance(payload.get('raw'), str) or len(payload['raw']) > MAX_RESPONSE_BYTES:
             raise MailError(tr('mail.invalid_response'))
         try:
@@ -555,6 +624,7 @@ def sync_gmail(directory, account, store=None, transport=None):
             raise MailError(tr('mail.invalid_response')) from None
         parsed = BytesParser(policy=policy.default).parsebytes(raw)
         if not matches_filters(account, parsed.get('Subject'), parsed.get('From')):
+            record_filtered(directory, provider, identifier)
             ignored += 1
         else:
             result = ingest_bytes(directory, raw, provider, identifier)
@@ -564,14 +634,9 @@ def sync_gmail(directory, account, store=None, transport=None):
             newest = max(newest, int(payload.get('internalDate', '0')) // 1000)
         except (ValueError, TypeError):
             pass
-    with estado.connect(directory) as connection:
-        next_page = listing.get('nextPageToken')
-        if isinstance(next_page, str) and next_page:
-            estado.set_cursor(connection, prefix + 'pagina', next_page)
-        else:
-            estado.set_cursor(connection, prefix + 'pagina', '')
-            if newest:
-                estado.set_cursor(connection, prefix + 'despues', str(newest))
+    next_page = listing.get('nextPageToken')
+    _save_sweep(directory, prefix, next_page if isinstance(next_page, str) else '', str(newest) if newest else '',
+                lambda value, best: not best or int(value) > int(best))
     return {'proveedor': provider, 'correo': account['correo'], 'importados': imported, 'duplicados': duplicates, 'filtrados': ignored, 'pagina_pendiente': bool(listing.get('nextPageToken'))}
 
 
@@ -597,7 +662,7 @@ def sync_microsoft(directory, account, store=None, transport=None):
     if not isinstance(listing, dict) or not isinstance(listing.get('value'), list):
         raise MailError(tr('mail.invalid_response'))
     imported, duplicates, ignored = 0, 0, 0
-    newest = after
+    newest = ''
     for item in listing['value'][:account['max_mensajes']]:
         if not isinstance(item, dict) or not isinstance(item.get('id'), str) or not item['id'] or len(item['id']) > 2000:
             raise MailError(tr('mail.invalid_response'))
@@ -605,11 +670,14 @@ def sync_microsoft(directory, account, store=None, transport=None):
         received = item.get('receivedDateTime')
         if received:
             newest = max(newest, base.moment(received).isoformat().replace('+00:00', 'Z'))
-        if known_message(directory, provider, identifier):
-            duplicates += 1
+        seen = known_message(directory, provider, identifier)
+        if seen:
+            ignored += seen == 'filtrado'
+            duplicates += seen != 'filtrado'
             continue
         sender = ((item.get('from') or {}).get('emailAddress') or {}).get('address', '')
         if not matches_filters(account, item.get('subject'), sender):
+            record_filtered(directory, provider, identifier)
             ignored += 1
             continue
         url = PROVIDERS[provider]['api'] + '/v1.0/me/messages/' + parse.quote(identifier, safe='') + '/$value'
@@ -619,14 +687,12 @@ def sync_microsoft(directory, account, store=None, transport=None):
         result = ingest_bytes(directory, raw, provider, identifier)
         imported += result['estado'] == 'pendiente_analisis_ia'
         duplicates += result['estado'] == 'duplicado'
-    with estado.connect(directory) as connection:
-        next_page = listing.get('@odata.nextLink')
-        if isinstance(next_page, str) and next_page:
-            safe_api_url(provider, next_page)
-            estado.set_cursor(connection, prefix + 'pagina', next_page)
-        else:
-            estado.set_cursor(connection, prefix + 'pagina', '')
-            estado.set_cursor(connection, prefix + 'despues', newest)
+    next_page = listing.get('@odata.nextLink')
+    if isinstance(next_page, str) and next_page:
+        safe_api_url(provider, next_page)
+    else:
+        next_page = ''
+    _save_sweep(directory, prefix, next_page, newest or after, lambda value, best: value > best)
     return {'proveedor': provider, 'correo': account['correo'], 'importados': imported, 'duplicados': duplicates, 'filtrados': ignored, 'pagina_pendiente': bool(listing.get('@odata.nextLink'))}
 
 

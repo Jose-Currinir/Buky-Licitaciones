@@ -5,9 +5,10 @@
 1. Consultar el directorio local con `buky.py perfiles`. Si existe un perfil, retomarlo sin repetir el alta; si hay varios, confirmar cuál atender. El tipo `empresa` y `persona_natural` conviven sin compartir datos.
 2. Si no existe ninguno, preguntar primero «¿Quieres trabajar como empresa o como persona natural?». Después pedir el RUT correspondiente y validar módulo 11. Un RUT válido matemáticamente no prueba existencia, identidad, inicio de actividades, habilidad ni representación.
 3. Para una empresa, investigar razón social y nombre comercial. Para una persona natural, confirmar su nombre legal; no inventar una razón social ni exigir inicio de actividades para explorar. Preguntar si tiene inicio cuando sea relevante para ofertar y guardar `true`, `false` o `null` solo según respuesta/evidencia.
-4. Consultar BuscarProveedor si hay ticket y registrar código de proveedor e identidad encontrada. Si no hay ticket, continuar con fuentes públicas oficiales y documentos aportados, dejando la consulta API pendiente. No volver a pedir un ticket configurado ni pedir su valor en el chat.
-5. Cruzar RUT e identidad con fuentes disponibles y documentos aportados. Presentar la coincidencia y pedir confirmación breve antes de enlazar antecedentes. Homónimos o falta de resultados requieren aclaración; nunca crear una identidad ficticia.
-6. Inicializar el tipo correcto mediante `buky.py perfil crear` o `base_empresa.py init`. Guardar la confirmación como hecho `identidad_confirmada` con fuente «usuario» y fecha. Unificar consultas posteriores por RUT, nunca por nombre solamente.
+4. En una empresa, ejecutar `buky.py giros --rut` para obtener del SII sus actividades económicas vigentes, el tramo de ventas (empresa de menor tamaño o no), los trabajadores y el domicilio. Quedan como hechos documentados con la fecha de publicación de la nómina. Son datos tributarios con meses de desfase: confirmar con el usuario si cambió algo. Para personas naturales el SII no publica nóminas: el usuario puede consultar «Situación tributaria de terceros» en sii.cl (tiene captcha; no intentes automatizarla) y aportar sus giros.
+5. Consultar BuscarProveedor si hay ticket y registrar código de proveedor e identidad encontrada. Si no hay ticket, continuar con fuentes públicas oficiales y documentos aportados, dejando la consulta API pendiente. No volver a pedir un ticket configurado ni pedir su valor en el chat.
+6. Cruzar RUT e identidad con fuentes disponibles y documentos aportados. Presentar la coincidencia y pedir confirmación breve antes de enlazar antecedentes. Homónimos o falta de resultados requieren aclaración; nunca crear una identidad ficticia.
+7. Inicializar el tipo correcto mediante `buky.py perfil crear` o `base_empresa.py init`. Guardar la confirmación como hecho `identidad_confirmada` con fuente «usuario» y fecha. Unificar consultas posteriores por RUT, nunca por nombre solamente.
 
 ## Directorio y cambio de perfil
 
@@ -26,7 +27,7 @@ Producir un perfil preliminar con identidad, nombre comercial si existe, sitios 
 
 Buscar primero en Mercado Público/Datos Abiertos, sitios oficiales y documentos aportados. Para antecedentes tributarios, registro, EMT o representación usar fuentes oficiales disponibles y documentos vigentes; no afirmar habilidad, ventas privadas o beneficiarios finales si la fuente no los acredita. No sortear login ni CAPTCHA; pedir el documento pertinente cuando sea necesario.
 
-Transformar lo descubierto en catálogo: familias, sinónimos, términos técnicos, códigos verificados, exclusiones y ejemplos. Validarlo mediante unas pocas oportunidades de muestra y correcciones del usuario; no tomar una palabra común como señal suficiente de afinidad.
+Transformar lo descubierto en catálogo: familias, sinónimos, términos técnicos, códigos verificados, exclusiones y ejemplos. Los giros del SII son el punto de partida: tradúcelos a lo que el usuario realmente vende («procesamiento de datos» → «hosting», «servidores», «respaldo en la nube») y descarta los que no ejerce. Validarlo mediante unas pocas oportunidades de muestra y correcciones del usuario; no tomar una palabra común como señal suficiente de afinidad.
 
 ## Nutrir la base
 

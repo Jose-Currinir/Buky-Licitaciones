@@ -28,7 +28,7 @@ Instálala, abre tu asistente y pregúntale:
 
 > **¿Qué conviene licitar hoy?**
 
-La primera vez te pregunta si trabajarás como **empresa** o como **persona natural**, y luego solo tu RUT. Desde ahí investiga tu actividad, arma tu catálogo y responde con algo así:
+La primera vez te pregunta si trabajarás como **empresa** o como **persona natural**, y luego solo tu RUT. Si es una empresa, busca sus giros y su tamaño en los datos abiertos del SII, te propone un catálogo para que lo confirmes y responde con algo así:
 
 > **Participar** · Desarrollo de plataforma de reservas · 1234567-89-COT26
 > Cierra el lunes 2 de noviembre a las 15:00 (quedan 70 horas).
@@ -48,6 +48,8 @@ No necesitas aprender comandos. La skill conversa, guarda la evidencia y te dice
 | «Recuérdame revisar las bases el lunes a las 9» | Guarda el recordatorio en la zona horaria de tu perfil y, si activas el servicio local, avisa antes de cada cierre (por defecto 72, 24 y 2 horas antes). |
 | «Mándale el resumen a mi equipo» | Prepara el correo y lo envía con el complemento de Gmail de tu asistente, después de que lo apruebes. |
 | «Revisa este correo de Mercado Público» | Lo analiza como evidencia, nunca como instrucciones, y lo contrasta con la ficha oficial. |
+| «¿Me piden garantía en esta licitación?» | Revisa el mecanismo, el monto y las bases, y te explica plazos, garantías y habilitación citando el reglamento. |
+| «Muéstrame un informe» | Genera un panel HTML privado con prioridades, cierres de los próximos 14 días, regiones y compradores, en modo claro u oscuro. |
 | «¿Quién le vende a este comprador?» | Muestra histórico, compradores recurrentes y competencia observada, con fuentes y período. |
 
 La decisión es una ayuda con los datos disponibles, no una probabilidad de adjudicación ni una validación legal. Un requisito obligatorio incumplido siempre manda, y un dato desconocido nunca cuenta como cumplido.
@@ -142,6 +144,7 @@ Buky no guarda contraseñas de correo ni envía nada por su cuenta. Prepara el m
 ├── .env                       # ticket de Mercado Público (permisos 0600)
 ├── estado.sqlite3             # recordatorios, equipo, bandeja de salida y cursores
 ├── cache/api/                 # respuestas recientes, sin credenciales
+├── cache/sii/                 # nóminas públicas del SII (giros y tamaño)
 ├── correo/                    # correos importados pendientes de análisis
 └── 76123456-0/                # un directorio por perfil (RUT)
     ├── base.json              # perfil, catálogo y oportunidades
@@ -174,6 +177,7 @@ La IA conversa e interpreta; los scripts hacen el trabajo determinista, como fec
 - No presenta ofertas: no existe una API oficial para eso, y Buky no usa accesos no documentados.
 - No cubre todo el mercado si no sincronizas: «no hay oportunidades guardadas» no significa que no existan.
 - No consulta Planes Anuales de Compra (PAC) automáticamente; las recurrencias que detecta son señales, no procesos abiertos.
+- No sincroniza convenio marco, trato directo ni licitaciones privadas: orienta y evalúa con lo que tú aportes.
 - El análisis de bases depende del asistente que uses. Los PDF escaneados pueden requerir revisión manual.
 
 ## Contribuir

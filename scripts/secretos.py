@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 
@@ -11,6 +12,11 @@ import version_store
 from i18n import tr
 
 SERVICE = 'cl.butake.licitaciones'
+# `security -i` lee órdenes de hasta ~4 KB por línea y el valor viaja en hexadecimal (el doble):
+# los secretos más largos se guardan en partes y la entrada principal solo guarda cuántas son.
+KEYCHAIN_PART_BYTES = 1800
+KEYCHAIN_MAX_LINE = 4000
+PARTS_MARK = 'BUKY-PARTES:'
 
 
 class SecretError(ValueError):
@@ -48,8 +54,9 @@ class SecretStore:
             if not executable:
                 raise SecretError(tr('secrets.unavailable'))
             if action == 'save':
-                # Sin valor tras -w, security lee la contraseña sin incluirla en argumentos.
-                return [executable, 'add-generic-password', '-U', '-s', SERVICE, '-a', account, '-w']
+                # Modo interactivo: la orden llega por stdin, así el secreto no aparece en los argumentos
+                # del proceso ni depende de una terminal (-w sin valor pediría la clave por /dev/tty).
+                return [executable, '-i']
             if action == 'load':
                 return [executable, 'find-generic-password', '-s', SERVICE, '-a', account, '-w']
             return [executable, 'delete-generic-password', '-s', SERVICE, '-a', account]
@@ -66,6 +73,9 @@ class SecretStore:
     def save(self, account, value):
         if not isinstance(value, str) or not value:
             raise SecretError(tr('secrets.empty'))
+        if self.backend == 'keychain':
+            self._keychain_save(account, value)
+            return
         if self.backend != 'dpapi':
             self._run(self._command('save', account), value)
             return
@@ -82,7 +92,58 @@ class SecretStore:
         path = self._path(account)
         version_store.atomic_write(path, content)
 
+    def _keychain_get(self, account):
+        value = self._run(self._command('load', account))
+        value = value[:-1] if value.endswith('\n') else value
+        if value and re.fullmatch(r'(?:[0-9a-f]{2})+', value):
+            # Keychain muestra en hexadecimal los valores que no son texto imprimible.
+            try:
+                return bytes.fromhex(value).decode('utf-8')
+            except UnicodeDecodeError:
+                return value
+        return value
+
+    def _keychain_put(self, account, value):
+        line = f'add-generic-password -U -s {SERVICE} -a {account} -X {value.encode("utf-8").hex()}\n'
+        if len(line.encode('ascii')) > KEYCHAIN_MAX_LINE:
+            raise SecretError(tr('secrets.backend_failed'))
+        self._run(self._command('save', account), line)
+        # `security -i` puede terminar bien aunque la orden falle: se confirma leyendo el valor.
+        if self._keychain_get(account) != value:
+            raise SecretError(tr('secrets.backend_failed'))
+
+    def _keychain_save(self, account, value):
+        parts, current = [], ''
+        for char in value:
+            if len((current + char).encode('utf-8')) > KEYCHAIN_PART_BYTES:
+                parts.append(current)
+                current = ''
+            current += char
+        parts.append(current)
+        try:
+            previous = self._keychain_get(account)
+        except SecretError:
+            previous = ''
+        if len(parts) == 1 and not value.startswith(PARTS_MARK):
+            self._keychain_put(account, value)
+        else:
+            # Las partes se escriben antes que la entrada principal: si algo falla, el valor anterior sigue intacto.
+            for index, part in enumerate(parts):
+                self._keychain_put(f'{account}.parte{index}', part)
+            self._keychain_put(account, PARTS_MARK + str(len(parts)))
+        old_count = int(previous[len(PARTS_MARK):]) if previous.startswith(PARTS_MARK) and previous[len(PARTS_MARK):].isdigit() else 0
+        for index in range(len(parts) if len(parts) > 1 else 0, old_count):
+            try:
+                self._run(self._command('delete', f'{account}.parte{index}'))
+            except SecretError:
+                pass
+
     def load(self, account):
+        if self.backend == 'keychain':
+            value = self._keychain_get(account)
+            if value.startswith(PARTS_MARK) and value[len(PARTS_MARK):].isdigit():
+                return ''.join(self._keychain_get(f'{account}.parte{index}') for index in range(int(value[len(PARTS_MARK):])))
+            return value
         if self.backend != 'dpapi':
             value = self._run(self._command('load', account))
             return value[:-1] if value.endswith('\n') else value
@@ -107,6 +168,17 @@ class SecretStore:
             raise SecretError(tr('secrets.backend_failed')) from None
 
     def delete(self, account):
+        if self.backend == 'keychain':
+            try:
+                value = self._keychain_get(account)
+            except SecretError:
+                value = ''
+            if value.startswith(PARTS_MARK) and value[len(PARTS_MARK):].isdigit():
+                for index in range(int(value[len(PARTS_MARK):])):
+                    try:
+                        self._run(self._command('delete', f'{account}.parte{index}'))
+                    except SecretError:
+                        pass
         if self.backend != 'dpapi':
             self._run(self._command('delete', account))
             return
@@ -121,7 +193,7 @@ class SecretStore:
 
 
 def save_json(store, account, data):
-    store.save(account, json.dumps(data, ensure_ascii=False, separators=(',', ':'), allow_nan=False))
+    store.save(account, json.dumps(data, ensure_ascii=True, separators=(',', ':'), allow_nan=False))
 
 
 def load_json(store, account):

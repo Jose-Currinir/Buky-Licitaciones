@@ -16,4 +16,4 @@ Completar en el espacio privado del perfil, nunca en un repositorio. Cada antece
 - Costos y margen mínimo (privado):
 - Documentos disponibles y ubicación privada:
 
-Un campo vacío significa desconocido; no significa cumplimiento.
+Un campo vacío significa desconocido; no significa cumplimiento. Lo que alimenta la evaluación se guarda con comandos, no en esta ficha: rubros con `catalogo`; regiones, horas de preparación y margen con `condiciones`; requisitos de cada proceso con `requisito`.
