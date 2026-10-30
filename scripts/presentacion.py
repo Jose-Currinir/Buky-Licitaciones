@@ -1,5 +1,4 @@
 """Presentación local: traducciones y conversiones de tiempo solo al mostrar."""
-from datetime import datetime
 import json
 from zoneinfo import ZoneInfo
 
@@ -29,7 +28,7 @@ def render_evaluation(item, evaluation, timezone_name='America/Santiago', locale
         tr('viability.title', locale, nombre=item['nombre']),
         tr('viability.decision.' + evaluation['decision'], locale),
         tr('viability.fit_label', locale, valor=tr('viability.fit.' + evaluation['ajuste_comercial'], locale)),
-        tr('today.closing' if item.get('fecha_cierre') else 'today.no_closing', locale, fecha=local_date(item.get('fecha_cierre'), timezone_name)) if item.get('fecha_cierre') else tr('today.no_closing', locale),
+        tr('today.closing', locale, fecha=local_date(item['fecha_cierre'], timezone_name)) if item.get('fecha_cierre') else tr('today.no_closing', locale),
     ]
     for title_key, events in [('viability.blockers', evaluation['bloqueos']), ('viability.pending', evaluation['pendientes']), ('viability.reasons', evaluation['razones'])]:
         if events:

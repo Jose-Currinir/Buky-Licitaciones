@@ -1,6 +1,6 @@
 # Fuentes y vigencia
 
-Última revisión documental: 2026-10-30 (reglamento y mecanismos) y 2026-10-29 (API). No hubo consultas autenticadas en la creación de la skill.
+Última revisión documental: 2026-10-30 (reglamento y mecanismos) y 2026-10-29 (API). El 2026-10-30 se validaron con un ticket real consultas de solo lectura de Compra Ágil y licitaciones (ver [api.md](api.md)); el resto del cliente se prueba con simulaciones.
 
 - API y condiciones: https://www.chilecompra.cl/api/
 - Guía Compra Ágil v2, versión 3.1 mayo 2026: https://www.chilecompra.cl/wp-content/uploads/2026/05/Documentacion_API_Compra_Agil-3-1.pdf

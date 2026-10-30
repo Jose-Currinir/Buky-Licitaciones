@@ -153,7 +153,6 @@ def render(company, evaluations, now=None, stage_counts=None, last_sync=None, li
     from viabilidad import catalog_raw, latest_facts
     facts = latest_facts(company)
     catalog = catalog_raw(facts)
-    catalog = [catalog] if isinstance(catalog, str) else catalog
     name = company.get('nombre') or base.display_rut(company['rut'])
 
     decisions = Counter(entry['evaluacion']['decision'] for entry in evaluations)

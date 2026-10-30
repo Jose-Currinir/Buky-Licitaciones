@@ -8,7 +8,6 @@ import os
 from pathlib import Path
 import re
 import sys
-import tempfile
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 import version_store as versions
 
@@ -48,8 +47,15 @@ def moment(value):
         raise DataError('Fecha inválida: requiere ISO-8601 con zona horaria.') from None
 
 
+def utc_iso(value):
+    """ISO-8601 en UTC con sufijo Z: el único formato de fecha que se guarda."""
+    if value.tzinfo is None or value.utcoffset() is None:
+        raise DataError('La fecha requiere zona horaria.')
+    return value.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
 def utc_now():
-    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return utc_iso(datetime.now(timezone.utc))
 
 
 def positive_hours(value):
@@ -141,7 +147,12 @@ def list_profiles(directory):
             continue
         if rut != entry.name or not (entry / 'base.json').is_file():
             continue
-        profiles.append(profile_summary(load(root, rut)))
+        try:
+            profiles.append(profile_summary(load(root, rut)))
+        except DataError as error:
+            # Una base dañada no debe ocultar los demás perfiles: se informa para restaurarla.
+            profiles.append({'rut': rut, 'tipo_perfil': 'ilegible', 'nombre': None, 'inicio_actividades': None,
+                             'identidad_confirmada': False, 'error': str(error)})
     return sorted(profiles, key=lambda item: (item['tipo_perfil'], (item['nombre'] or item['rut']).casefold(), item['rut']))
 
 
@@ -159,10 +170,12 @@ def update_identity(data, nombre=None, inicio_actividades=None):
 
 def load(directory, rut):
     path = path_for(directory, rut)
+    if not path.exists():
+        raise DataError('El perfil no existe todavía; créalo antes de usarlo.')
     try:
         data = versions.read_current(path)
     except (OSError, ValueError):
-        raise DataError('Base no disponible o ilegible; inicializa el perfil o revisa el archivo.') from None
+        raise DataError('La base del perfil está dañada o fue editada a mano; revisa `historial` y usa `restaurar` con una revisión válida.') from None
     if data.get('schema_version') != 1 or data.get('rut') != normalize_rut(rut):
         raise DataError('La base no coincide con el perfil o versión esperada.')
     profile_type = data.get('tipo_perfil', 'empresa')
@@ -176,9 +189,10 @@ def load(directory, rut):
 
 def save(directory, data, create=False, reason='actualizar base', author='asistente'):
     root = Path(directory).expanduser()
+    # El directorio de datos lista RUT, que en personas naturales son datos personales.
     if not root.exists():
-        # El directorio de datos lista RUT, que en personas naturales son datos personales.
-        root.mkdir(parents=True, mode=0o700)
+        versions.private_mkdir(root)
+    if root.resolve() != Path.home().resolve():
         os.chmod(root, 0o700)
     try:
         versions.commit(path_for(directory, data['rut']), data, create=create, reason=reason, author=author)

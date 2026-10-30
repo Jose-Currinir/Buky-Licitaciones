@@ -11,7 +11,9 @@ import sys
 
 import anotaciones
 import base_empresa as base
+import actualizacion
 import correo
+import diagnostico
 import estado
 import informe
 import equipo
@@ -69,10 +71,7 @@ def catalog_queries(directory, rut, limit=10):
     """Términos de búsqueda por defecto: el catálogo vigente del perfil."""
     from viabilidad import catalog_raw, latest_facts
     facts = latest_facts(base.load(directory, rut))
-    catalog = catalog_raw(facts)
-    if isinstance(catalog, str):
-        catalog = [catalog]
-    return [str(value) for value in catalog[:limit] if str(value).strip()]
+    return catalog_raw(facts)[:limit]
 
 
 def ticket_command(directory):
@@ -110,7 +109,10 @@ def sync_company(directory, rut, queries=None, resource='agil', date=None, provi
             raise BukyError(tr('sync.v1_filter_required'))
         queries = [None]
     else:
-        raise BukyError(tr('error.invalid_choice'))
+        raise BukyError(tr('sync.unknown_resource'))
+    if resource == 'licitaciones' and any(query and query.strip() for query in queries or []):
+        # La v1 no filtra por palabras: el catálogo se aplica después, al enfocar los resultados.
+        raise BukyError(tr('sync.v1_no_query'))
     ticket = ticket or require_ticket(directory)
     if client is None and fetch_fn is None:
         client = opportunities.api.ApiExecutor(directory=directory, max_attempts=request_budget)
@@ -130,7 +132,8 @@ def sync_company(directory, rut, queries=None, resource='agil', date=None, provi
 
     def persist_page(page):
         persisted = opportunities.persist_sync(directory, rut, page, resource)
-        progress('sync.progress_page', cantidad=len(page['items']))
+        count = len(page['items'])
+        progress('sync.progress_page_one' if count == 1 else 'sync.progress_page', cantidad=count)
         result['consultadas'] += len(page['items'])
         result['nuevas'] += persisted['actualizadas']
         result['sin_cambios'] += persisted.get('sin_cambios', 0)
@@ -180,11 +183,6 @@ def sync_company(directory, rut, queries=None, resource='agil', date=None, provi
             'reintentos': client.retries,
         })
     return result
-
-
-def api_error_types():
-    # Evita capturar errores de programación o imprimir contenido privado de respuestas.
-    return (ticket_config.ConfigError, base.DataError, opportunities.api.ApiError, OSError)
 
 
 def evaluate_company(directory, rut, code=None, active_only=False, now=None):
@@ -256,7 +254,7 @@ def stage_counts(company, now=None):
 
 def today(directory, rut, queries=None, synchronize=False, code=None, limit=5, now=None, fetch_fn=None, consulted_fn=None):
     if limit < 1 or limit > 100:
-        raise BukyError(tr('error.invalid_choice'))
+        raise BukyError(tr('error.limit_range', maximo=100))
     sync_result = None
     if synchronize and code:
         sync_result = fetch_process(directory, rut, code, fetch_fn=fetch_fn, consulted_fn=consulted_fn)
@@ -282,15 +280,17 @@ def today(directory, rut, queries=None, synchronize=False, code=None, limit=5, n
 def write_report(directory, rut, limit=30, out=None, now=None):
     """Escribe el informe HTML privado del perfil y devuelve su ruta y cifras clave."""
     if limit < 1 or limit > 200:
-        raise BukyError(tr('error.invalid_choice'))
+        raise BukyError(tr('error.limit_range', maximo=200))
     directory = data_directory(directory)
     now = now or datetime.now(timezone.utc)
     company, evaluations = evaluate_company(directory, rut, active_only=True, now=now)
     html = informe.render(company, evaluations, now, stage_counts(company, now), last_sync(directory, rut), limit)
     if out:
         target = Path(out).expanduser().resolve()
-        if target.suffix.lower() != '.html' or target.exists():
-            raise BukyError(tr('error.invalid_choice'))
+        if target.suffix.lower() != '.html':
+            raise BukyError(tr('report.out_extension'))
+        if target.exists():
+            raise BukyError(tr('report.out_exists'))
     else:
         stamp = now.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         target = base.path_for(directory, rut).parent / 'informes' / f'informe-{stamp}.html'
@@ -306,7 +306,7 @@ def write_report(directory, rut, limit=30, out=None, now=None):
 
 def build_parser():
     parser = argparse.ArgumentParser(prog='buky-licitaciones', description=tr('app.name'))
-    parser.add_argument('--data-dir', default=DEFAULT_DATA_DIR)
+    parser.add_argument('--data-dir', help='Directorio privado de datos (por defecto, BUKY_DATA_DIR o ~/.buky/licitaciones)')
     parser.add_argument('--locale', default='es')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--version', action='store_true')
@@ -431,6 +431,12 @@ def build_parser():
     costs.add_argument('--precio', required=True, help='Precio neto ofertado')
     costs.add_argument('--moneda', default='CLP')
     costs.add_argument('--fuente')
+    diagnosis = commands.add_parser('diagnostico')
+    diagnosis.add_argument('--rut', required=True)
+    diagnosis.add_argument('--limite', type=int, default=5)
+    diagnosis.add_argument('--ahora', help=argparse.SUPPRESS)
+    update_check = commands.add_parser('actualizacion')
+    update_check.add_argument('--forzar', action='store_true', help='Consulta la versión publicada aunque haya una comprobación reciente')
     lines = commands.add_parser('giros')
     lines.add_argument('--rut', required=True)
     lines.add_argument('--sin-tamano', action='store_true', help='Omite la nómina de empresas (190 MB) y busca solo los giros')
@@ -526,6 +532,349 @@ def render_today(company, report, limit, locale, single=False):
     return '\n'.join(lines)
 
 
+def command_perfiles(args, directory, now):
+    profiles = base.list_profiles(directory)
+    if args.json:
+        print_json(profiles)
+    elif not profiles:
+        print(tr('profile.none', args.locale))
+    else:
+        for item in profiles:
+            print(tr('profile.item', args.locale, nombre=item['nombre'] or tr('profile.unknown_name', args.locale), tipo=tr('profile.type.' + item['tipo_perfil'], args.locale), rut=item['rut']))
+    return 0
+
+
+def command_perfil(args, directory, now):
+    if args.profile_command == 'crear':
+        data = base.init(directory, args.rut, args.tipo, args.nombre, args.inicio_actividades)
+        result = base.profile_summary(data)
+        message = tr('profile.created', args.locale)
+    else:
+        data = base.load(directory, args.rut)
+        result = base.update_identity(data, args.nombre, args.inicio_actividades)
+        base.save(directory, data, reason='actualizar identidad del perfil')
+        message = tr('profile.updated', args.locale)
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_sincronizar(args, directory, now):
+    result = sync_company(directory, args.rut, args.q, args.recurso, args.fecha, args.proveedor)
+    if args.json:
+        print_json(result)
+    else:
+        print('\n'.join(render_sync(result, args.locale)))
+        for error in result['errores']:
+            print('- ' + error, file=sys.stderr)
+    return 1 if result['errores'] else 0
+
+
+def command_recordar(args, directory, now):
+    result = recordatorios.add(directory, args.rut, args.texto, args.fecha, args.detalle, args.proceso)
+    if args.json:
+        print_json(result)
+    else:
+        company = base.load(directory, args.rut)
+        print(tr('reminder.saved', args.locale, fecha=local_date(result['vence_utc'], company['preferencias']['zona_horaria'])))
+    return 0
+
+
+def command_recordatorios(args, directory, now):
+    if args.cancelar:
+        if not args.rut:
+            raise BukyError(tr('error.company_required', args.locale))
+        recordatorios.cancel(directory, args.rut, args.cancelar)
+        result = {'estado': 'cancelado', 'id': args.cancelar}
+    else:
+        result = recordatorios.list_reminders(directory, args.rut, args.todos)
+    if args.json:
+        print_json(result)
+    elif args.cancelar:
+        print(tr('reminder.cancelled', args.locale))
+    elif not result:
+        print(tr('reminder.none', args.locale))
+    else:
+        for item in result:
+            print(tr('reminder.item', args.locale, fecha=local_date(item['vence_utc'], profile_zone(directory, item['rut'])), titulo=item['titulo'], id=item['id']))
+    return 0
+
+
+def command_correo(args, directory, now):
+    command = args.mail_command
+    if command == 'conectar':
+        result = correo.connect(
+            directory, args.proveedor, args.correo, args.client_id,
+            open_browser=not args.sin_navegador, oauth_port=args.puerto_oauth,
+        )
+        message = tr('mail.connected', args.locale)
+    elif command == 'desconectar':
+        result = correo.disconnect(directory, args.proveedor, args.correo)
+        message = tr('mail.disconnected', args.locale)
+    elif command == 'sincronizar':
+        result = correo.sync_configured(directory)
+        message = ''
+    elif command == 'importar':
+        result = correo.import_eml(directory, args.archivo, args.rut)
+        message = tr('mail.duplicate' if result['estado'] == 'duplicado' else 'mail.imported', args.locale)
+    elif command == 'pendientes':
+        result = correo.pending(directory, args.rut)
+        message = tr('mail.pending_none', args.locale) if not result else ''
+    elif command == 'mostrar':
+        result = correo.read_message(directory, args.proveedor, args.id)
+        message = ''
+    elif command == 'revisar':
+        result = correo.mark_reviewed(directory, args.proveedor, args.id)
+        message = tr('mail.reviewed', args.locale)
+    else:
+        config = correo.load_config(directory)
+        matches = [item for item in config['cuentas'] if item['proveedor'] == args.proveedor and item['correo'].lower() == args.correo.lower()]
+        if not matches:
+            raise correo.MailError(tr('mail.not_connected', args.locale))
+        updates = {
+            'palabras': args.palabras, 'remitentes': args.remitentes,
+            'dias_iniciales': args.dias_iniciales, 'max_mensajes': args.max_mensajes,
+        }
+        matches[0].update({key: value for key, value in updates.items() if value is not None})
+        correo.validate_account(matches[0])
+        correo.save_config(directory, config)
+        if args.palabras is not None or args.remitentes is not None:
+            correo.forget_filtered(directory, args.proveedor)
+        result = matches[0]
+        message = tr('service.config_saved', args.locale)
+    if args.json or command in {'mostrar', 'sincronizar'}:
+        print_json(result)
+    elif command == 'pendientes' and result:
+        for item in result:
+            print(tr('mail.pending_item', args.locale, proveedor=item['proveedor'], id=item['mensaje_id'], archivo=item['archivo']))
+    elif command == 'sincronizar':
+        pass
+    else:
+        print(message)
+    if command == 'sincronizar' and not args.json:
+        for item in result.get('cuentas', []):
+            print(tr('mail.sync_summary', args.locale, importados=item['importados'], duplicados=item['duplicados'], filtrados=item['filtrados']))
+        for item in result.get('errores', []):
+            print('- ' + item['error'], file=sys.stderr)
+    return 1 if isinstance(result, dict) and result.get('errores') else 0
+
+
+def command_diagnostico(args, directory, now):
+    if args.limite < 1 or args.limite > 50:
+        raise BukyError(tr('error.limit_range', maximo=50))
+    result = diagnostico.diagnose(base.load(directory, args.rut), now, args.limite)
+    if args.json:
+        print_json(result)
+        return 0
+    lines = [tr('diagnosis.title', args.locale, cantidad=result['cobertura']['oportunidades'])]
+    for item in result['mejora']['condiciones']:
+        lines.append(tr('diagnosis.improvement', args.locale, accion=item['accion'], cantidad=item['oportunidades']))
+    for item in result['desarrollo']['lineas_cercanas']:
+        lines.append(tr('diagnosis.line', args.locale, linea=item['valor'], cantidad=item['oportunidades'], monto=f"{item['monto_clp']:,.0f}".replace(',', '.')))
+    for item in result['desarrollo']['compradores_frecuentes']:
+        lines.append(tr('diagnosis.buyer', args.locale, comprador=item['valor'], cantidad=item['oportunidades']))
+    if result['historial_propio']['estado'] == 'sin_historial':
+        lines.append(tr('diagnosis.no_history', args.locale))
+    print('\n'.join(lines))
+    return 0
+
+
+def command_actualizacion(args, directory, now):
+    result = actualizacion.check(directory, now, force=args.forzar)
+    print_json(result) if args.json else print(result.get('mensaje') or tr('update.disabled', args.locale))
+    return 0
+
+
+def command_giros(args, directory, now):
+    result = sii.lookup(directory, args.rut, include_size=not args.sin_tamano, refresh=args.actualizar)
+    if args.json:
+        print_json(result)
+    elif result['estado'] == 'no_encontrado':
+        print(tr('sii.not_found', args.locale))
+    else:
+        print(tr('sii.found', args.locale, cantidad=len(result['actividades']), giros='; '.join(item['descripcion'] for item in result['actividades'])))
+        size = (result.get('empresa') or {}).get('tramo_ventas')
+        if size:
+            info = result['empresa']
+            print(tr('sii.size', args.locale, anio=info['anio_comercial'], tramo=size['nombre'], rango=f" ({size['rango_uf']})" if size['rango_uf'] else '', trabajadores=info['trabajadores'] if info['trabajadores'] is not None else '?'))
+        if result['sugerencias_catalogo']:
+            print(tr('sii.suggestions', args.locale, terminos=', '.join(result['sugerencias_catalogo'])))
+    return 0
+
+
+def command_informe(args, directory, now):
+    result = write_report(directory, args.rut, args.limite, args.out, now)
+    print_json(result) if args.json else print(tr('report.saved', args.locale, archivo=result['archivo']))
+    return 0
+
+
+def command_catalogo(args, directory, now):
+    result = anotaciones.catalog(directory, args.rut, args.agregar, args.quitar, args.excluir, args.permitir, args.estado, args.fuente)
+    empty = tr('annotation.empty', args.locale)
+    message = tr('annotation.catalog', args.locale, catalogo=', '.join(result['catalogo']) or empty, exclusiones=', '.join(result['exclusiones']) or empty)
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_condiciones(args, directory, now):
+    result = anotaciones.conditions(directory, args.rut, args.regiones, args.horas_preparacion, args.margen_minimo, args.estado, args.fuente, args.emt)
+    empty = tr('annotation.empty', args.locale)
+    margin = result['margen_minimo']
+    message = tr('annotation.conditions', args.locale,
+                 regiones=', '.join(result['regiones_atencion'] or []) or empty,
+                 horas=f"{result['horas_preparacion']:g}" if result['horas_preparacion'] is not None else empty,
+                 margen=f'{margin:.0%}' if isinstance(margin, (int, float)) else empty)
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_requisito(args, directory, now):
+    command = args.requirement_command
+    if command == 'listar':
+        result = anotaciones.requirements(directory, args.rut, args.codigo)
+        lines = [tr('annotation.requirement_item', args.locale, id=item.get('id', '-'), estado=item.get('estado', 'pendiente'),
+                    obligatorio=tr('annotation.mandatory' if item.get('obligatorio') else 'annotation.optional', args.locale),
+                    requisito=item.get('requisito', '')) for item in result['requisitos'] if isinstance(item, dict)]
+        message = '\n'.join(lines) or tr('annotation.requirements_none', args.locale)
+    elif command == 'agregar':
+        result = anotaciones.add_requirement(directory, args.rut, args.codigo, args.texto, not args.opcional, args.estado, args.fuente, args.evidencia)
+        message = tr('annotation.requirement_saved', args.locale, id=result['id'], estado=result['estado'])
+    else:
+        result = anotaciones.mark_requirement(directory, args.rut, args.codigo, args.id, args.estado, args.evidencia, args.fuente)
+        message = tr('annotation.requirement_saved', args.locale, id=result['id'], estado=result['estado'])
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_seguir(args, directory, now):
+    result = anotaciones.follow(directory, args.rut, args.codigo, not args.silenciar)
+    message = tr('annotation.followed' if result['activo'] else 'annotation.muted', args.locale, codigo=result['codigo'])
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_costos(args, directory, now):
+    result = anotaciones.register_costs(directory, args.rut, args.codigo, args.costo, args.precio, args.moneda, args.fuente)
+    message = tr('annotation.costs_saved', args.locale, margen=f'{float(result["margen"]):.1%}')
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_equipo(args, directory, now):
+    command = args.team_command
+    if command == 'listar':
+        result = equipo.list_members(directory, args.rut, args.todos)
+        message = '\n'.join(tr('team.item', args.locale, nombre=item['nombre'], correo=item['correo'], rol=item['rol'], avisos=', '.join(item['avisos']) or '-', id=item['id']) for item in result) or tr('team.none', args.locale)
+    elif command == 'agregar':
+        result = equipo.add_member(directory, args.rut, args.nombre, args.correo, args.rol, args.avisos)
+        message = tr('team.added', args.locale, nombre=result['nombre'], correo=result['correo'])
+    elif command == 'editar':
+        result = equipo.update_member(directory, args.rut, args.id, args.nombre, args.correo, args.rol, args.avisos, args.activo)
+        message = tr('team.updated', args.locale)
+    else:
+        result = equipo.remove_member(directory, args.rut, args.id)
+        message = tr('team.removed', args.locale)
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_aviso(args, directory, now):
+    command = args.outbox_command
+    if command == 'preparar':
+        summary = None
+        if args.tipo == 'resumen':
+            company, report = today(directory, args.rut, limit=args.limite, now=now)
+            summary = render_today(company, report, args.limite, args.locale)
+        result = equipo.prepare(directory, args.rut, args.tipo, args.para, args.asunto, args.texto, args.recordatorio, summary)
+        message = tr('outbox.prepared', args.locale, id=result['id'], para=', '.join(result['para']))
+    elif command == 'pendientes':
+        result = equipo.pending(directory, args.rut)
+        message = '\n'.join(tr('outbox.item', args.locale, id=item['id'], asunto=item['asunto'], para=', '.join(item['para'])) for item in result) or tr('outbox.none', args.locale)
+    else:
+        state = 'enviado' if command == 'enviado' else 'descartado'
+        result = equipo.resolve(directory, args.id, state, args.referencia, args.rut)
+        message = tr('outbox.resolved', args.locale, estado=state)
+    print_json(result) if args.json else print(message)
+    return 0
+
+
+def command_servicio(args, directory, now):
+    if args.service_command == 'configurar':
+        updates = {
+            'intervalo_segundos': args.intervalo,
+            'intervalo_sincronizacion_minutos': args.intervalo_sincronizacion,
+            'sincronizar_oportunidades': args.sincronizar,
+            'horas_recordatorios': args.horas,
+            'canal_notificaciones': args.canal,
+            'correo_recordatorios': args.correo_recordatorios,
+        }
+        result = servicio.save_config(directory, {key: value for key, value in updates.items() if value is not None})
+        message = tr('service.config_saved', args.locale)
+    elif args.service_command == 'ejecutar':
+        result = servicio.run_once(directory, now=now)
+        message = tr('service.done', args.locale, avisos=len(result['recordatorios']['enviados']), errores=len(result['errores']))
+    elif args.service_command == 'iniciar':
+        result = servicio.run_forever(directory)
+        message = tr('service.done', args.locale, avisos=len(result['recordatorios']['enviados']), errores=len(result['errores']))
+    elif args.service_command == 'instalar':
+        result = servicio.definition(directory)
+        message = tr('service.definition', args.locale)
+    elif args.service_command == 'habilitar':
+        result = servicio.enable(directory)
+        message = tr('service.enabled', args.locale)
+    elif args.service_command == 'deshabilitar':
+        result = servicio.disable(directory)
+        message = tr('service.disabled', args.locale)
+    else:
+        result = servicio.status(directory)
+        message = tr('service.running' if result['ejecutando'] else 'service.not_running', args.locale)
+    print_json(result) if args.json else print(message)
+    return 1 if isinstance(result, dict) and result.get('errores') else 0
+
+
+def command_hoy(args, directory, now):
+    if args.q and not args.sincronizar:
+        raise BukyError(tr('today.query_requires_sync'))
+    company, report = today(directory, args.rut, args.q, args.sincronizar, args.codigo, args.limite, now)
+    if args.json:
+        # El informe completo queda guardado en «archivo»; la salida se limita para no saturar al asistente.
+        print_json(dict(report, evaluaciones=report['evaluaciones'][:args.limite], mostradas=min(args.limite, report['total'])))
+    else:
+        print(render_today(company, report, args.limite, args.locale, single=args.command == 'evaluar'))
+    return 1 if (report.get('sincronizacion') or {}).get('errores') else 0
+
+
+COMMANDS = {
+    'perfiles': command_perfiles,
+    'perfil': command_perfil,
+    'sincronizar': command_sincronizar,
+    'recordar': command_recordar,
+    'recordatorios': command_recordatorios,
+    'correo': command_correo,
+    'giros': command_giros,
+    'diagnostico': command_diagnostico,
+    'actualizacion': command_actualizacion,
+    'informe': command_informe,
+    'catalogo': command_catalogo,
+    'condiciones': command_condiciones,
+    'requisito': command_requisito,
+    'seguir': command_seguir,
+    'costos': command_costos,
+    'equipo': command_equipo,
+    'aviso': command_aviso,
+    'servicio': command_servicio,
+    'hoy': command_hoy,
+    'evaluar': command_hoy,
+}
+
+
+# Errores con mensaje pensado para el usuario; los demás se informan como error genérico.
+DOMAIN_ERRORS = (
+    BukyError, base.DataError, opportunities.OpportunityError, opportunities.api.ApiError, ticket_config.ConfigError,
+    recordatorios.ReminderError, servicio.ServiceError, correo.MailError, correo.secretos.SecretError, equipo.TeamError,
+    anotaciones.AnnotationError, sii.SiiError,
+)
+
+
 def main(argv=None):
     parser = build_parser()
     args = parser.parse_args(argv)
@@ -539,257 +888,9 @@ def main(argv=None):
     try:
         directory = data_directory(args.data_dir)
         now = base.moment(args.ahora) if getattr(args, 'ahora', None) else None
-        if args.command == 'perfiles':
-            profiles = base.list_profiles(directory)
-            if args.json:
-                print_json(profiles)
-            elif not profiles:
-                print(tr('profile.none', args.locale))
-            else:
-                for item in profiles:
-                    print(tr('profile.item', args.locale, nombre=item['nombre'] or tr('profile.unknown_name', args.locale), tipo=tr('profile.type.' + item['tipo_perfil'], args.locale), rut=item['rut']))
-            return 0
-        if args.command == 'perfil':
-            if args.profile_command == 'crear':
-                data = base.init(directory, args.rut, args.tipo, args.nombre, args.inicio_actividades)
-                result = base.profile_summary(data)
-                message = tr('profile.created', args.locale)
-            else:
-                data = base.load(directory, args.rut)
-                result = base.update_identity(data, args.nombre, args.inicio_actividades)
-                base.save(directory, data, reason='actualizar identidad del perfil')
-                message = tr('profile.updated', args.locale)
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'sincronizar':
-            result = sync_company(directory, args.rut, args.q, args.recurso, args.fecha, args.proveedor)
-            if args.json:
-                print_json(result)
-            else:
-                print('\n'.join(render_sync(result, args.locale)))
-                for error in result['errores']:
-                    print('- ' + error, file=sys.stderr)
-            return 1 if result['errores'] else 0
-        if args.command == 'recordar':
-            result = recordatorios.add(directory, args.rut, args.texto, args.fecha, args.detalle, args.proceso)
-            if args.json:
-                print_json(result)
-            else:
-                company = base.load(directory, args.rut)
-                print(tr('reminder.saved', args.locale, fecha=local_date(result['vence_utc'], company['preferencias']['zona_horaria'])))
-            return 0
-        if args.command == 'recordatorios':
-            if args.cancelar:
-                if not args.rut:
-                    raise BukyError(tr('error.company_required', args.locale))
-                recordatorios.cancel(directory, args.rut, args.cancelar)
-                result = {'estado': 'cancelado', 'id': args.cancelar}
-            else:
-                result = recordatorios.list_reminders(directory, args.rut, args.todos)
-            if args.json:
-                print_json(result)
-            elif args.cancelar:
-                print(tr('reminder.cancelled', args.locale))
-            elif not result:
-                print(tr('reminder.none', args.locale))
-            else:
-                for item in result:
-                    print(tr('reminder.item', args.locale, fecha=local_date(item['vence_utc'], profile_zone(directory, item['rut'])), titulo=item['titulo'], id=item['id']))
-            return 0
-        if args.command == 'correo':
-            command = args.mail_command
-            if command == 'conectar':
-                result = correo.connect(
-                    directory, args.proveedor, args.correo, args.client_id,
-                    open_browser=not args.sin_navegador, oauth_port=args.puerto_oauth,
-                )
-                message = tr('mail.connected', args.locale)
-            elif command == 'desconectar':
-                result = correo.disconnect(directory, args.proveedor, args.correo)
-                message = tr('mail.disconnected', args.locale)
-            elif command == 'sincronizar':
-                result = correo.sync_configured(directory)
-                message = ''
-            elif command == 'importar':
-                result = correo.import_eml(directory, args.archivo, args.rut)
-                message = tr('mail.duplicate' if result['estado'] == 'duplicado' else 'mail.imported', args.locale)
-            elif command == 'pendientes':
-                result = correo.pending(directory, args.rut)
-                message = tr('mail.pending_none', args.locale) if not result else ''
-            elif command == 'mostrar':
-                result = correo.read_message(directory, args.proveedor, args.id)
-                message = ''
-            elif command == 'revisar':
-                result = correo.mark_reviewed(directory, args.proveedor, args.id)
-                message = tr('mail.reviewed', args.locale)
-            else:
-                config = correo.load_config(directory)
-                matches = [item for item in config['cuentas'] if item['proveedor'] == args.proveedor and item['correo'].lower() == args.correo.lower()]
-                if not matches:
-                    raise correo.MailError(tr('mail.not_connected', args.locale))
-                updates = {
-                    'palabras': args.palabras, 'remitentes': args.remitentes,
-                    'dias_iniciales': args.dias_iniciales, 'max_mensajes': args.max_mensajes,
-                }
-                matches[0].update({key: value for key, value in updates.items() if value is not None})
-                correo.validate_account(matches[0])
-                correo.save_config(directory, config)
-                if args.palabras is not None or args.remitentes is not None:
-                    correo.forget_filtered(directory, args.proveedor)
-                result = matches[0]
-                message = tr('service.config_saved', args.locale)
-            if args.json or command in {'mostrar', 'sincronizar'}:
-                print_json(result)
-            elif command == 'pendientes' and result:
-                for item in result:
-                    print(tr('mail.pending_item', args.locale, proveedor=item['proveedor'], id=item['mensaje_id'], archivo=item['archivo']))
-            elif command == 'sincronizar':
-                pass
-            else:
-                print(message)
-            if command == 'sincronizar' and not args.json:
-                for item in result.get('cuentas', []):
-                    print(tr('mail.sync_summary', args.locale, importados=item['importados'], duplicados=item['duplicados'], filtrados=item['filtrados']))
-                for item in result.get('errores', []):
-                    print('- ' + item['error'], file=sys.stderr)
-            return 1 if isinstance(result, dict) and result.get('errores') else 0
-        if args.command == 'giros':
-            result = sii.lookup(directory, args.rut, include_size=not args.sin_tamano, refresh=args.actualizar)
-            if args.json:
-                print_json(result)
-            elif result['estado'] == 'no_encontrado':
-                print(tr('sii.not_found', args.locale))
-            else:
-                print(tr('sii.found', args.locale, cantidad=len(result['actividades']), giros='; '.join(item['descripcion'] for item in result['actividades'])))
-                size = (result.get('empresa') or {}).get('tramo_ventas')
-                if size:
-                    info = result['empresa']
-                    print(tr('sii.size', args.locale, anio=info['anio_comercial'], tramo=size['nombre'], rango=f" ({size['rango_uf']})" if size['rango_uf'] else '', trabajadores=info['trabajadores'] if info['trabajadores'] is not None else '?'))
-                if result['sugerencias_catalogo']:
-                    print(tr('sii.suggestions', args.locale, terminos=', '.join(result['sugerencias_catalogo'])))
-            return 0
-        if args.command == 'informe':
-            result = write_report(directory, args.rut, args.limite, args.out, now)
-            print_json(result) if args.json else print(tr('report.saved', args.locale, archivo=result['archivo']))
-            return 0
-        if args.command == 'catalogo':
-            result = anotaciones.catalog(directory, args.rut, args.agregar, args.quitar, args.excluir, args.permitir, args.estado, args.fuente)
-            empty = tr('annotation.empty', args.locale)
-            message = tr('annotation.catalog', args.locale, catalogo=', '.join(result['catalogo']) or empty, exclusiones=', '.join(result['exclusiones']) or empty)
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'condiciones':
-            result = anotaciones.conditions(directory, args.rut, args.regiones, args.horas_preparacion, args.margen_minimo, args.estado, args.fuente, args.emt)
-            empty = tr('annotation.empty', args.locale)
-            margin = result['margen_minimo']
-            message = tr('annotation.conditions', args.locale,
-                         regiones=', '.join(result['regiones_atencion'] or []) or empty,
-                         horas=f"{result['horas_preparacion']:g}" if result['horas_preparacion'] is not None else empty,
-                         margen=f'{margin:.0%}' if isinstance(margin, (int, float)) else empty)
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'requisito':
-            command = args.requirement_command
-            if command == 'listar':
-                result = anotaciones.requirements(directory, args.rut, args.codigo)
-                lines = [tr('annotation.requirement_item', args.locale, id=item.get('id', '-'), estado=item.get('estado', 'pendiente'),
-                            obligatorio=tr('annotation.mandatory' if item.get('obligatorio') else 'annotation.optional', args.locale),
-                            requisito=item.get('requisito', '')) for item in result['requisitos'] if isinstance(item, dict)]
-                message = '\n'.join(lines) or tr('annotation.requirements_none', args.locale)
-            elif command == 'agregar':
-                result = anotaciones.add_requirement(directory, args.rut, args.codigo, args.texto, not args.opcional, args.estado, args.fuente, args.evidencia)
-                message = tr('annotation.requirement_saved', args.locale, id=result['id'], estado=result['estado'])
-            else:
-                result = anotaciones.mark_requirement(directory, args.rut, args.codigo, args.id, args.estado, args.evidencia, args.fuente)
-                message = tr('annotation.requirement_saved', args.locale, id=result['id'], estado=result['estado'])
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'seguir':
-            result = anotaciones.follow(directory, args.rut, args.codigo, not args.silenciar)
-            message = tr('annotation.followed' if result['activo'] else 'annotation.muted', args.locale, codigo=result['codigo'])
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'costos':
-            result = anotaciones.register_costs(directory, args.rut, args.codigo, args.costo, args.precio, args.moneda, args.fuente)
-            message = tr('annotation.costs_saved', args.locale, margen=f'{float(result["margen"]):.1%}')
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'equipo':
-            command = args.team_command
-            if command == 'listar':
-                result = equipo.list_members(directory, args.rut, args.todos)
-                message = '\n'.join(tr('team.item', args.locale, nombre=item['nombre'], correo=item['correo'], rol=item['rol'], avisos=', '.join(item['avisos']) or '-', id=item['id']) for item in result) or tr('team.none', args.locale)
-            elif command == 'agregar':
-                result = equipo.add_member(directory, args.rut, args.nombre, args.correo, args.rol, args.avisos)
-                message = tr('team.added', args.locale, nombre=result['nombre'], correo=result['correo'])
-            elif command == 'editar':
-                result = equipo.update_member(directory, args.rut, args.id, args.nombre, args.correo, args.rol, args.avisos, args.activo)
-                message = tr('team.updated', args.locale)
-            else:
-                result = equipo.remove_member(directory, args.rut, args.id)
-                message = tr('team.removed', args.locale)
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'aviso':
-            command = args.outbox_command
-            if command == 'preparar':
-                summary = None
-                if args.tipo == 'resumen':
-                    company, report = today(directory, args.rut, limit=args.limite, now=now)
-                    summary = render_today(company, report, args.limite, args.locale)
-                result = equipo.prepare(directory, args.rut, args.tipo, args.para, args.asunto, args.texto, args.recordatorio, summary)
-                message = tr('outbox.prepared', args.locale, id=result['id'], para=', '.join(result['para']))
-            elif command == 'pendientes':
-                result = equipo.pending(directory, args.rut)
-                message = '\n'.join(tr('outbox.item', args.locale, id=item['id'], asunto=item['asunto'], para=', '.join(item['para'])) for item in result) or tr('outbox.none', args.locale)
-            else:
-                state = 'enviado' if command == 'enviado' else 'descartado'
-                result = equipo.resolve(directory, args.id, state, args.referencia, args.rut)
-                message = tr('outbox.resolved', args.locale, estado=state)
-            print_json(result) if args.json else print(message)
-            return 0
-        if args.command == 'servicio':
-            if args.service_command == 'configurar':
-                updates = {
-                    'intervalo_segundos': args.intervalo,
-                    'intervalo_sincronizacion_minutos': args.intervalo_sincronizacion,
-                    'sincronizar_oportunidades': args.sincronizar,
-                    'horas_recordatorios': args.horas,
-                    'canal_notificaciones': args.canal,
-                    'correo_recordatorios': args.correo_recordatorios,
-                }
-                result = servicio.save_config(directory, {key: value for key, value in updates.items() if value is not None})
-                message = tr('service.config_saved', args.locale)
-            elif args.service_command == 'ejecutar':
-                result = servicio.run_once(directory, now=now)
-                message = tr('service.done', args.locale, avisos=len(result['recordatorios']['enviados']), errores=len(result['errores']))
-            elif args.service_command == 'iniciar':
-                result = servicio.run_forever(directory)
-                message = tr('service.done', args.locale, avisos=len(result['recordatorios']['enviados']), errores=len(result['errores']))
-            elif args.service_command == 'instalar':
-                result = servicio.definition(directory)
-                message = tr('service.definition', args.locale)
-            elif args.service_command == 'habilitar':
-                result = servicio.enable(directory)
-                message = tr('service.enabled', args.locale)
-            elif args.service_command == 'deshabilitar':
-                result = servicio.disable(directory)
-                message = tr('service.disabled', args.locale)
-            else:
-                result = servicio.status(directory)
-                message = tr('service.running' if result['ejecutando'] else 'service.not_running', args.locale)
-            print_json(result) if args.json else print(message)
-            return 1 if isinstance(result, dict) and result.get('errores') else 0
-        company, report = today(directory, args.rut, args.q, args.sincronizar, args.codigo, args.limite, now)
-        if args.json:
-            # El informe completo queda guardado en «archivo»; la salida se limita para no saturar al asistente.
-            print_json(dict(report, evaluaciones=report['evaluaciones'][:args.limite], mostradas=min(args.limite, report['total'])))
-        else:
-            print(render_today(company, report, args.limite, args.locale, single=args.command == 'evaluar'))
-        return 1 if (report.get('sincronizacion') or {}).get('errores') else 0
-    except (BukyError, base.DataError, opportunities.OpportunityError, opportunities.api.ApiError, ticket_config.ConfigError, recordatorios.ReminderError, servicio.ServiceError, correo.MailError, correo.secretos.SecretError, equipo.TeamError, anotaciones.AnnotationError, sii.SiiError, OSError, ValueError) as error:
-        domain_errors = (BukyError, base.DataError, opportunities.OpportunityError, opportunities.api.ApiError, ticket_config.ConfigError, recordatorios.ReminderError, servicio.ServiceError, correo.MailError, correo.secretos.SecretError, equipo.TeamError, anotaciones.AnnotationError, sii.SiiError)
-        message = str(error) if isinstance(error, domain_errors) else tr('error.generic', args.locale, detalle=str(error))
+        return COMMANDS[args.command](args, directory, now)
+    except (*DOMAIN_ERRORS, OSError, ValueError) as error:
+        message = str(error) if isinstance(error, DOMAIN_ERRORS) else tr('error.generic', args.locale, detalle=str(error))
         if args.json:
             print_json({'ok': False, 'error': {'tipo': type(error).__name__, 'mensaje': message}})
         print(message, file=sys.stderr)

@@ -1,6 +1,6 @@
 # Avisos por correo al titular y al equipo
 
-La skill **no envía correos ni guarda contraseñas de correo**. Guarda el equipo de cada perfil en `estado.sqlite3` y prepara borradores en una bandeja de salida. Quien envía es el **complemento de correo del asistente**: Gmail en ChatGPT, o la herramienta de correo equivalente en Codex, Claude u otro host. Así la autorización y los permisos los gestiona el usuario en su asistente, no Buky.
+La skill **no envía correos ni guarda contraseñas de correo**. Guarda el equipo de cada perfil en `estado.sqlite3` y prepara borradores en una bandeja de salida. Quien envía es la **herramienta de correo del asistente**: el conector o complemento de Gmail u Outlook que el usuario haya habilitado en ChatGPT, Claude, Codex u otro host. Así la autorización y los permisos los gestiona el usuario en su asistente, no Buky.
 
 ## 1. Comprobar el complemento antes de ofrecer envíos
 
@@ -10,7 +10,9 @@ Revisa qué herramientas de correo tienes disponibles en esta conversación:
 - **Solo puede crear borradores**: crea el borrador en el correo del usuario y dile que lo revise y pulse «Enviar».
 - **Solo lectura o ninguna**: explica en una frase cómo habilitarlo y sigue con el resto del flujo:
 
-> Para que pueda enviar correos, activa el complemento de Gmail: en ChatGPT abre **Configuración → Aplicaciones**, elige **Gmail** y pulsa **Conectar**. Luego vuelve a este chat y selecciónalo en las herramientas del mensaje. Los nombres del menú pueden variar según la versión.
+> Para que pueda enviar correos, conecta tu Gmail u Outlook en la configuración de conectores o aplicaciones de este asistente (en ChatGPT: **Configuración → Aplicaciones**; en Claude: **Configuración → Conectores**) y vuelve a este chat. Los nombres del menú pueden variar según la versión.
+
+Usa la ruta que corresponda al asistente en que estás; no menciones la de otro.
 
 Mientras tanto puedes configurar el equipo y dejar los borradores listos, o mostrar el correo para copiarlo. No inventes una capacidad de envío que no aparece en tus herramientas, no pidas contraseñas ni propongas SMTP. Si Google Contacts u otro directorio está conectado, puedes usarlo para **buscar** el correo de una persona que el usuario nombró, y confirmar el resultado antes de agregarla.
 

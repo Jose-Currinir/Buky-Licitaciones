@@ -89,13 +89,13 @@ def _tokens(text):
     return [_stem(word) for word in normalize_text(text).split() if word not in STOPWORDS]
 
 
-def _matches(text, terms):
+def matches(text, terms):
     """Coincidencia completa: todas las palabras significativas del término están en el texto."""
     available = set(_tokens(text))
     return [term for term in terms if _tokens(term) and set(_tokens(term)) <= available]
 
 
-def _partial_matches(text, terms):
+def partial_matches(text, terms):
     """Palabras distintivas compartidas (no genéricas, de 4+ letras) cuando no hay coincidencia completa."""
     available = set(_tokens(text))
     shared = []
@@ -154,6 +154,7 @@ def evaluate(opportunity, company, now=None):
     now = now or datetime.now(timezone.utc)
     if now.tzinfo is None:
         raise base.DataError('La evaluación requiere una hora con zona.')
+    evaluated_at = base.utc_iso(now)
     facts = latest_facts(company)
     stage = base.classify(opportunity, now, company.get('preferencias', {}).get('horas_por_cerrar', 72))
     reasons, blockers, pending, actions = [], [], [], []
@@ -182,9 +183,9 @@ def evaluate(opportunity, company, now=None):
     text = ' '.join([str(opportunity.get('nombre', '')), products, str(opportunity.get('descripcion', ''))])
     catalog = catalog_terms(facts)
     exclusions = _terms(facts.get('exclusiones'))
-    matched = _matches(text, catalog)
-    partial = [] if matched else _partial_matches(text, catalog)
-    excluded = _matches(text, exclusions)
+    matched = matches(text, catalog)
+    partial = [] if matched else partial_matches(text, catalog)
+    excluded = matches(text, exclusions)
     if excluded:
         add_unique(blockers, _event('exclusion_comercial', ', '.join(excluded)))
     if not catalog:
@@ -292,7 +293,7 @@ def evaluate(opportunity, company, now=None):
         'bloqueos': blockers,
         'pendientes': pending,
         'proximas_acciones': actions,
-        'evaluado_en': base.utc_now(),
+        'evaluado_en': evaluated_at,
         'evidencia': {
             'fuente': opportunity.get('fuente'),
             'consultado_en': opportunity.get('consultado_en'),

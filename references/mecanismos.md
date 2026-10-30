@@ -1,6 +1,6 @@
 # Mecanismos de compra, garantías y habilitación
 
-Resumen operativo del Reglamento de la Ley 19.886 (Decreto 661 de Hacienda, 2024), según el texto de la Biblioteca del Congreso generado el 26-02-2025 y revisado el 30-10-2026. Antes de una afirmación que decida una oferta, verifica el artículo vigente y las bases del proceso: **las bases y sus modificaciones mandan dentro del marco legal**. Los montos en UTM se convierten con el valor oficial del mes que corresponda (ver [fuentes.md](fuentes.md)).
+Resumen operativo del Reglamento de la Ley 19.886 (Decreto 661 de Hacienda, 2024), según el texto de la Biblioteca del Congreso generado el 2025-02-26 y revisado el 2026-10-30. Antes de una afirmación que decida una oferta, verifica el artículo vigente y las bases del proceso: **las bases y sus modificaciones mandan dentro del marco legal**. Los montos en UTM se convierten con el valor oficial del mes que corresponda (ver [fuentes.md](fuentes.md)).
 
 ## Qué hace la skill con cada mecanismo
 

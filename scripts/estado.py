@@ -1,5 +1,4 @@
 """Estado operativo SQLite: recordatorios, cursores, deduplicación, equipo y salida de correo, sin secretos."""
-import json
 import os
 from pathlib import Path
 import sqlite3
@@ -97,7 +96,9 @@ def connect(directory):
     connection.execute('PRAGMA busy_timeout = 30000')
     connection.executescript(SCHEMA)
     connection.execute('PRAGMA user_version = 1')
-    os.chmod(path, 0o600)
+    for private in (path, Path(str(path) + '-wal'), Path(str(path) + '-shm')):
+        if private.exists():
+            os.chmod(private, 0o600)
     return connection
 
 

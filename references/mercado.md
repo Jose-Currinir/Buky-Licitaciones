@@ -8,6 +8,10 @@ Para períodos extensos prioriza descargas oficiales de Datos Abiertos; usa API 
 
 Métricas: compradores recurrentes, procesos/OC únicos, montos por moneda/condición tributaria, productos, estacionalidad, plazos y resultados conocidos. No contar el monto de una OC y el de su adjudicación dos veces. Mantener anulaciones y versiones, excluirlas de sumas comerciales según el indicador y describir la regla. Una orden aceptada no prueba ingreso pagado.
 
+## Diagnóstico de mejora y desarrollo
+
+`buky.py diagnostico --rut` resume lo guardado: condiciones del perfil que bloquean o dejan pendientes muchas oportunidades, regiones fuera de cobertura, requisitos que se repiten, líneas de compra cercanas que se repiten fuera del catálogo, compradores frecuentes de lo afín y procesos afines que cerraron con dos ofertas o menos. Es local y determinista; su alcance es el de las oportunidades sincronizadas. Las líneas cercanas se forman con pares de palabras de los títulos: interprétalas y confírmalas con el usuario antes de tocar el catálogo. Con historial propio (`registro` de tipo `historico_propio`) informa además cuántos registros respaldan la experiencia.
+
 ## Competidores observados
 
 Identifica proveedores que cotizan o adjudican productos comparables ante compradores compartidos. Agrupa por RUT; razón social es una etiqueta mutable. Distingue oferente observado, adjudicatario y proveedor incumbente; no declares competidor confirmado solo por compartir giro.

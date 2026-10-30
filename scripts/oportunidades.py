@@ -4,7 +4,6 @@ from zoneinfo import ZoneInfo
 import hashlib
 import json
 import os
-from pathlib import Path
 import re
 
 import base_empresa as base
@@ -18,7 +17,7 @@ class OpportunityError(ValueError):
 def utc_iso(value=None):
     if value is None:
         return base.utc_now()
-    return base.moment(value).isoformat().replace('+00:00', 'Z')
+    return base.utc_iso(base.moment(value))
 
 
 def pick(data, names, default=None):
@@ -57,7 +56,7 @@ def _date(raw, warnings, field, inferred=None):
     if inferred is not None:
         inferred.append(field)
     warnings.append(f'{field}: sin zona en la fuente; se interpretó como hora de Chile ({OFFICIAL_ZONE})')
-    return local.replace(tzinfo=ZoneInfo(OFFICIAL_ZONE)).astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return base.utc_iso(local.replace(tzinfo=ZoneInfo(OFFICIAL_ZONE)))
 
 
 def _amount(value):
@@ -102,6 +101,10 @@ def _products(raw):
     return names, categories
 
 
+# Códigos v1 verificados con la API el 30-10-2026.
+V1_STATES = {'5': 'publicada', '6': 'cerrada', '7': 'desierta', '8': 'adjudicada', '15': 'revocada'}
+
+
 def normalize_item(raw, mechanism, source, consulted, warnings):
     """Adapta v1 (licitaciones) y v2 (Compra Ágil, con campos anidados) a un contrato común."""
     if not isinstance(raw, dict):
@@ -110,9 +113,14 @@ def normalize_item(raw, mechanism, source, consulted, warnings):
     name = pick(raw, ['nombre', 'titulo', 'Nombre', 'objeto', 'descripcion'])
     if code is None or name is None:
         raise OpportunityError('Se omitió un registro sin código o nombre verificables.')
-    state = pick(raw, ['estado_oficial', 'estado.codigo', 'Estado', 'estado', 'CodigoEstado', 'codigo_estado'], 'desconocido')
+    # En v1 el listado trae solo CodigoEstado y el detalle además Estado: se prefiere el código y se
+    # traduce, para que ambas observaciones coincidan y no generen revisiones sin cambios reales.
+    state = pick(raw, ['estado_oficial', 'estado.codigo', 'CodigoEstado', 'Estado', 'estado', 'codigo_estado'], 'desconocido')
     if isinstance(state, dict):
         state = pick(state, ['codigo', 'glosa'], 'desconocido')
+    state = str(state).strip().lower()
+    # «Desierta (o art. 3 ó 9 Ley 19.886)»: la aclaración legal no forma parte del estado.
+    state = V1_STATES.get(state, re.sub(r'\s*\(.*$', '', state))
     buyer = pick(raw, ['institucion.organismo_comprador', 'Comprador.NombreOrganismo', 'comprador.nombre', 'organismo.nombre', 'NombreOrganismo', 'comprador', 'organismo'])
     if isinstance(buyer, dict):
         buyer = pick(buyer, ['nombre', 'razon_social', 'Nombre', 'NombreOrganismo'])
@@ -131,7 +139,7 @@ def normalize_item(raw, mechanism, source, consulted, warnings):
         'codigo': str(code),
         'mecanismo': mechanism,
         'nombre': str(name),
-        'estado_oficial': str(state).strip().lower(),
+        'estado_oficial': state,
         'fuente': source,
         'consultado_en': consulted,
         # En v2, `fechas.fecha_cierre` viene sin zona (hora de Chile); otros campos rotulan esa misma hora como Z.
@@ -279,7 +287,7 @@ def sync_agil(ticket, query=None, size=50, max_pages=100, fetch_fn=None, consult
         for item in normalized['items']:
             key = (item['mecanismo'], item['codigo'])
             if key in seen_items:
-                if item != seen_items[key]:
+                if base.material_view(item) != base.material_view(seen_items[key]):
                     raise OpportunityError(f'El proceso {item["codigo"]} cambió durante el barrido; reintenta con una ventana acotada.')
                 continue
             seen_items[key] = item
@@ -340,7 +348,7 @@ def focus_and_enrich(result, company, ticket, fetch_fn=None, consulted_fn=None, 
         if base.classify(item, now, hours) in {'cerradas', 'suspendidas'}:
             discarded_closed += 1
             continue
-        if catalog and not (viabilidad._matches(item['nombre'], catalog) or viabilidad._partial_matches(item['nombre'], catalog)):
+        if catalog and not (viabilidad.matches(item['nombre'], catalog) or viabilidad.partial_matches(item['nombre'], catalog)):
             discarded_catalog += 1
             continue
         kept.append(item)

@@ -1,5 +1,6 @@
 """Recordatorios UTC, deduplicados y con reintentos; notificaciones sin shell."""
 from datetime import datetime, timedelta, timezone
+import base64
 import hashlib
 import os
 import platform
@@ -12,6 +13,7 @@ import base_empresa as base
 import estado
 import viabilidad as viability
 from i18n import tr
+from presentacion import local_date
 
 
 class ReminderError(ValueError):
@@ -23,7 +25,7 @@ def _utc(value):
         value = base.moment(value)
     if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
         raise ReminderError(tr('reminder.timezone_required'))
-    return value.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+    return base.utc_iso(value)
 
 
 def _id(rut, process, kind, due):
@@ -83,6 +85,7 @@ def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
     now = base.moment(_utc(now or datetime.now(timezone.utc)))
     rut = base.normalize_rut(rut)
     company = base.load(directory, rut)
+    zone = company['preferencias']['zona_horaria']
     desired = set()
     created = 0
     for item in company['oportunidades'].values():
@@ -109,7 +112,7 @@ def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
             # El aviso inmediato se identifica por el cierre, no por «ahora», para no repetirse en cada ciclo.
             key = 'cierre:' + _utc(closing) if hours == 'proximo' else due_utc
             desired.add(_id(rut, item['codigo'], kind, key))
-            saved = add(directory, rut, item['nombre'], due_utc, detail=f'Cierre: {item["fecha_cierre"]} · {item["codigo"]}', process=item['codigo'], kind=kind, key=key)
+            saved = add(directory, rut, item['nombre'], due_utc, detail=tr('reminder.closing_detail', cierre=local_date(item['fecha_cierre'], zone), codigo=item['codigo']), process=item['codigo'], kind=kind, key=key)
             created += saved['creado']
     cancelled = 0
     with estado.connect(directory) as connection:
@@ -122,11 +125,6 @@ def sync_company(directory, rut, thresholds=(72, 24, 2), now=None):
                 cancelled += 1
         connection.commit()
     return {'creados': created, 'cancelados': cancelled, 'activos': len(desired)}
-
-
-def count_pending(directory, rut):
-    with estado.connect(directory) as connection:
-        return connection.execute("SELECT COUNT(*) AS total FROM recordatorios WHERE rut = ? AND estado = 'pendiente'", (base.normalize_rut(rut),)).fetchone()['total']
 
 
 def list_reminders(directory, rut=None, include_finished=False):
@@ -184,6 +182,13 @@ def terminal_notification(title, body):
     return header + ('\n' + detail if detail else '')
 
 
+def powershell_string(value):
+    # En una cadena con comillas simples PowerShell no expande variables ni subexpresiones;
+    # también trata como comilla simple las variantes tipográficas, que se duplican igual.
+    text = terminal_text(value)
+    return "'" + re.sub(r"(['\u2018\u2019\u201a\u201b])", r"\1\1", text) + "'"
+
+
 def notification_command(title, body, system=None):
     system = system or platform.system()
     if system == 'Darwin':
@@ -192,18 +197,22 @@ def notification_command(title, body, system=None):
     if system == 'Linux':
         if not shutil.which('notify-send'):
             raise ReminderError(tr('reminder.linux_missing'))
-        return ['notify-send', title, body]
+        return ['notify-send', '--', title, body]
     if system == 'Windows':
+        # Título y cuerpo pueden venir de la API: van como literales entre comillas simples y el
+        # script completo viaja codificado, de modo que PowerShell nunca los interpreta como código.
         script = (
-            '& { param($title, $body) Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; '
+            '$title = ' + powershell_string(title) + '; $body = ' + powershell_string(body) + '; '
+            'Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; '
             '$n = New-Object System.Windows.Forms.NotifyIcon; $n.Icon = [System.Drawing.SystemIcons]::Information; '
             '$n.Visible = $true; $n.ShowBalloonTip(10000, $title, $body, [System.Windows.Forms.ToolTipIcon]::Info); '
-            'Start-Sleep -Seconds 11; $n.Dispose() }'
+            'Start-Sleep -Seconds 11; $n.Dispose()'
         )
         executable = shutil.which('powershell') or shutil.which('pwsh')
         if not executable:
             raise ReminderError(tr('reminder.windows_missing'))
-        return [executable, '-NoProfile', '-NonInteractive', '-Command', script, '-title', title, '-body', body]
+        encoded = base64.b64encode(script.encode('utf-16-le')).decode('ascii')
+        return [executable, '-NoProfile', '-NonInteractive', '-EncodedCommand', encoded]
     raise ReminderError(tr('reminder.unsupported'))
 
 

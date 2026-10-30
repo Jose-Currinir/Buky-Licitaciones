@@ -89,10 +89,14 @@ def ensure_file(directory, kind, refresh=False, opener=None, now=None, output=No
         checked = meta.get('revisado_utc')
         if not refresh and checked and now - base.moment(checked) < REFRESH_AFTER:
             return target, meta
-        with _open(BASE_URL + name, 'HEAD', opener) as response:
-            modified = response.headers.get('Last-Modified')
+        try:
+            with _open(BASE_URL + name, 'HEAD', opener) as response:
+                modified = response.headers.get('Last-Modified')
+        except SiiError:
+            # Sin red se sigue usando la nómina guardada; se volverá a revisar en la próxima consulta.
+            return target, meta
         if modified and modified == meta.get('last_modified'):
-            meta['revisado_utc'] = now.isoformat().replace('+00:00', 'Z')
+            meta['revisado_utc'] = base.utc_iso(now)
             meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding='utf-8')
             return target, meta
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
@@ -123,8 +127,8 @@ def ensure_file(directory, kind, refresh=False, opener=None, now=None, output=No
             temp.unlink()
     meta = {
         'archivo': name, 'last_modified': modified,
-        'publicado_utc': parsedate_to_datetime(modified).astimezone(timezone.utc).isoformat().replace('+00:00', 'Z') if modified else None,
-        'descargado_utc': now.isoformat().replace('+00:00', 'Z'), 'revisado_utc': now.isoformat().replace('+00:00', 'Z'),
+        'publicado_utc': base.utc_iso(parsedate_to_datetime(modified)) if modified else None,
+        'descargado_utc': base.utc_iso(now), 'revisado_utc': base.utc_iso(now),
     }
     meta_path.write_text(json.dumps(meta, ensure_ascii=False), encoding='utf-8')
     return target, meta
@@ -239,9 +243,12 @@ def _safe(directory, kind, reader, archive, rut):
     """Una caché dañada o con otro formato se elimina para que la próxima consulta la descargue de nuevo."""
     try:
         return reader(archive, rut)
-    except (zipfile.BadZipFile, KeyError, ValueError, OSError, EOFError):
+    except (zipfile.BadZipFile, EOFError):
         forget(directory, kind)
         raise SiiError(tr('sii.invalid_file')) from None
+    except (KeyError, ValueError, OSError):
+        # Formato inesperado o error de lectura: se conserva el archivo (son cientos de MB).
+        raise SiiError(tr('sii.unexpected_format')) from None
 
 
 def _source(kind, meta):
@@ -256,7 +263,7 @@ def lookup(directory, rut, include_size=True, refresh=False, opener=None, now=No
     if data.get('tipo_perfil') == 'persona_natural':
         raise SiiError(tr('sii.natural_person'))
     now = now or datetime.now(timezone.utc)
-    stamp = now.isoformat().replace('+00:00', 'Z')
+    stamp = base.utc_iso(now)
     archive, meta = ensure_file(directory, 'actividades', refresh, opener, now, output)
     found = _safe(directory, 'actividades', activities, archive, rut)
     result = {'rut': data['rut'], 'actividades': found, 'empresa': None,

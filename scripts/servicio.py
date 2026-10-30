@@ -1,12 +1,14 @@
 """Coordinador local opcional: una instancia por directorio de datos."""
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
+from http.client import HTTPException
 import json
 import os
 from pathlib import Path
 import platform
 import plistlib
 import shlex
+import sqlite3
 import subprocess
 import sys
 import time
@@ -17,6 +19,10 @@ import estado
 import recordatorios
 import version_store
 from i18n import tr
+
+
+# Errores de un perfil o del correo que se registran sin detener el ciclo del servicio.
+RECOVERABLE = (ValueError, OSError, sqlite3.Error, HTTPException)
 
 
 DEFAULT_CONFIG = {
@@ -99,17 +105,7 @@ def companies(directory):
 
 
 def process_alive(pid):
-    if not isinstance(pid, int) or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-        return True
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    except OSError:
-        return False
+    return version_store.pid_alive(pid) is True
 
 
 @contextmanager
@@ -123,7 +119,7 @@ def instance_lock(directory):
         try:
             metadata = json.loads(path.read_text(encoding='utf-8'))
         except (OSError, ValueError):
-            raise ServiceError(tr('service.lock_invalid')) from None
+            raise ServiceError(tr('service.lock_invalid', archivo=path)) from None
         if process_alive(metadata.get('pid')):
             raise ServiceError(tr('service.lock_active'))
         # El proceso anterior terminó sin limpiar: se retira el bloqueo y se reintenta una vez.
@@ -167,23 +163,18 @@ def run_once(directory, synchronize=None, notifier=None, now=None, use_lock=True
                         due = should_sync(connection, rut, now)
                     if due:
                         import buky
-                        from viabilidad import catalog_raw, latest_facts
-                        facts = latest_facts(base.load(directory, rut))
-                        catalog = catalog_raw(facts)
-                        if isinstance(catalog, str):
-                            catalog = [catalog]
-                        queries = [str(value) for value in catalog[:10]]
+                        queries = buky.catalog_queries(directory, rut)
                         if queries:
                             result = buky.sync_company(directory, rut, queries=queries, request_budget=25)
                             company_report['sincronizacion'] = result
                             delay = config['intervalo_sincronizacion_minutos'] if not result['errores'] else 15
-                            next_sync = (now + timedelta(minutes=delay)).isoformat().replace('+00:00', 'Z')
+                            next_sync = base.utc_iso(now + timedelta(minutes=delay))
                             if result.get('detenida_por_cuota') and result.get('reintentar_en'):
                                 next_sync = result['reintentar_en']
                             with estado.connect(directory) as connection:
                                 estado.set_cursor(connection, 'siguiente_sync:' + rut, next_sync)
                 company_report['recordatorios'] = recordatorios.sync_company(directory, rut, config['horas_recordatorios'], now)
-            except (ValueError, OSError) as error:
+            except RECOVERABLE as error:
                 company_report['error'] = str(error)[:500]
                 report['errores'].append({'rut': rut, 'error': company_report['error']})
             report['empresas'].append(company_report)
@@ -192,16 +183,20 @@ def run_once(directory, synchronize=None, notifier=None, now=None, use_lock=True
             report['correo'] = correo.sync_configured(directory)
         except ImportError:
             report['correo'] = {'estado': 'no_disponible'}
-        except (ValueError, OSError) as error:
+        except RECOVERABLE as error:
             report['errores'].append({'correo': str(error)[:500]})
-        report['recordatorios'] = recordatorios.dispatch(directory, now, notifier, channel)
+        try:
+            report['recordatorios'] = recordatorios.dispatch(directory, now, notifier, channel)
+        except RECOVERABLE as error:
+            report['recordatorios'] = {'enviados': [], 'fallidos': []}
+            report['errores'].append({'recordatorios': str(error)[:500]})
         if config['correo_recordatorios']:
             # El servicio solo deja borradores; el asistente los envía con el complemento de correo.
             import equipo
             try:
                 drafts = equipo.enqueue_reminders(directory, report['recordatorios']['enviados'])
                 report['correo_salida'] = [item['id'] for item in drafts]
-            except (ValueError, OSError) as error:
+            except RECOVERABLE as error:
                 report['errores'].append({'correo_salida': str(error)[:500]})
         append_log(directory, {'evento': 'ejecucion', 'errores': len(report['errores']), 'avisos_enviados': len(report['recordatorios']['enviados'])})
 

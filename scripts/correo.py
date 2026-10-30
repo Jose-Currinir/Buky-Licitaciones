@@ -3,9 +3,10 @@ import base64
 from datetime import datetime, timedelta, timezone
 from email import policy
 from email.parser import BytesParser
-from email.utils import getaddresses, parsedate_to_datetime
+from email.utils import parsedate_to_datetime
 import hashlib
 from html.parser import HTMLParser
+from http.client import HTTPException
 from http.server import BaseHTTPRequestHandler, HTTPServer
 import json
 import os
@@ -129,8 +130,10 @@ def _request(url, transport=None, headers=None, form=None, expect_json=True):
         with request.urlopen(req, timeout=30) as response:
             content = response.read(MAX_RESPONSE_BYTES + 1)
     except urlerror.HTTPError as error:
+        if error.code in {400, 401} and form is not None and form.get('grant_type') == 'refresh_token':
+            raise MailError(tr('mail.reconnect_required')) from None
         raise MailError(tr('mail.http_error', codigo=error.code)) from None
-    except (urlerror.URLError, TimeoutError, OSError):
+    except (urlerror.URLError, TimeoutError, OSError, HTTPException):
         raise MailError(tr('mail.network_error')) from None
     if len(content) > MAX_RESPONSE_BYTES:
         raise MailError(tr('mail.message_too_large'))
@@ -223,7 +226,7 @@ def normalize_token(provider, payload, previous=None):
         raise MailError(tr('mail.invalid_response'))
     token = {
         'access_token': payload['access_token'], 'refresh_token': refresh,
-        'expira_utc': (datetime.now(timezone.utc) + timedelta(seconds=payload['expires_in'])).isoformat().replace('+00:00', 'Z'),
+        'expira_utc': base.utc_iso(datetime.now(timezone.utc) + timedelta(seconds=payload['expires_in'])),
         'scope': sorted(granted) if granted else required,
     }
     return token
@@ -405,14 +408,19 @@ def received_time(message):
         value = parsedate_to_datetime(str(message.get('Date', '')))
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
-        return value.astimezone(timezone.utc).isoformat().replace('+00:00', 'Z')
+        return base.utc_iso(value)
     except (TypeError, ValueError, OverflowError):
         return base.utc_now()
 
 
+def mentions_code(text, code):
+    """Busca el código completo, sin aceptarlo como parte de otro más largo (p. ej. 1234-5-COT26)."""
+    return re.search(r'(?<![A-Z0-9-])' + re.escape(code.upper()) + r'(?![A-Z0-9]|-[A-Z0-9])', text) is not None
+
+
 def matching_processes(directory, text):
-    candidates = set(re.findall(r'\b[A-Z0-9]{2,10}-\d{2,10}(?:-[A-Z0-9]{1,10}){0,3}\b', text.upper()))
-    if not candidates:
+    text = text.upper()
+    if '-' not in text:
         return None, []
     root = Path(directory).expanduser().resolve()
     matches = []
@@ -422,7 +430,8 @@ def matching_processes(directory, text):
         except (base.DataError, OSError, ValueError):
             continue
         for item in company['oportunidades'].values():
-            if str(item.get('codigo', '')).upper() in candidates:
+            code = str(item.get('codigo', ''))
+            if code and mentions_code(text, code):
                 matches.append((company['rut'], item['codigo']))
     companies = {rut for rut, code in matches}
     return (matches[0][0] if len(companies) == 1 else None), [{'rut': rut, 'codigo': code} for rut, code in matches]
@@ -648,7 +657,7 @@ def sync_microsoft(directory, account, store=None, transport=None):
         page = estado.get_cursor(connection, prefix + 'pagina')
         after = estado.get_cursor(connection, prefix + 'despues')
     if not after:
-        after = (datetime.now(timezone.utc) - timedelta(days=account['dias_iniciales'])).isoformat().replace('+00:00', 'Z')
+        after = base.utc_iso(datetime.now(timezone.utc) - timedelta(days=account['dias_iniciales']))
     base.moment(after)
     if page:
         url = safe_api_url(provider, page)
@@ -669,7 +678,7 @@ def sync_microsoft(directory, account, store=None, transport=None):
         identifier = item['id']
         received = item.get('receivedDateTime')
         if received:
-            newest = max(newest, base.moment(received).isoformat().replace('+00:00', 'Z'))
+            newest = max(newest, base.utc_iso(base.moment(received)))
         seen = known_message(directory, provider, identifier)
         if seen:
             ignored += seen == 'filtrado'

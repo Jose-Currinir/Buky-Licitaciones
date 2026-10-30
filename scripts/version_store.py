@@ -10,6 +10,8 @@ import tempfile
 import time
 
 LOCK_WAIT_SECONDS = 3.0
+# Una escritura dura segundos: un bloqueo de más de 10 minutos casi seguro quedó huérfano.
+STALE_LOCK_SECONDS = 600
 
 class VersionError(ValueError):
     pass
@@ -32,11 +34,19 @@ def revision_digest(data):
     return hashlib.sha256(canonical({'datos': body(data), 'metadatos': metadata})).hexdigest()
 
 
+def private_mkdir(directory):
+    """Crea cada nivel faltante con 0700; `mkdir(parents=True)` solo aplica el modo al último."""
+    directory = Path(directory)
+    for level in reversed([directory, *directory.parents]):
+        if not level.exists():
+            level.mkdir(mode=0o700)
+
+
 def atomic_write(path, content):
     path = Path(path)
     if path.is_symlink():
         raise VersionError('No se escribe sobre enlaces simbólicos.')
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_mkdir(path.parent)
     temp = None
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, delete=False) as out:
@@ -57,6 +67,11 @@ def lock_owner_alive(lock):
         pid = json.loads(Path(lock).read_text(encoding='utf-8')).get('pid')
     except (OSError, ValueError, AttributeError):
         return None
+    return pid_alive(pid)
+
+
+def pid_alive(pid):
+    """True si el proceso existe, False si terminó, None si el PID no es válido o no se puede saber."""
     if type(pid) is not int or pid <= 0:
         return None
     try:
@@ -70,11 +85,19 @@ def lock_owner_alive(lock):
         return None
 
 
+def lock_age_seconds(lock):
+    try:
+        created = datetime.fromisoformat(json.loads(Path(lock).read_text(encoding='utf-8'))['creado_utc'])
+        return (datetime.now(timezone.utc) - created).total_seconds()
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
+
+
 @contextmanager
 def write_lock(path, wait=None):
     """Bloqueo exclusivo por perfil: espera brevemente y retira bloqueos de procesos terminados."""
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_mkdir(path.parent)
     lock = path.parent / '.write.lock'
     deadline = time.monotonic() + (LOCK_WAIT_SECONDS if wait is None else wait)
     while True:
@@ -87,6 +110,9 @@ def write_lock(path, wait=None):
                 lock.unlink(missing_ok=True)
                 continue
             if time.monotonic() >= deadline:
+                if lock_age_seconds(lock) > STALE_LOCK_SECONDS:
+                    # Un PID reutilizado tras reiniciar puede parecer vivo: se pide comprobarlo a mano.
+                    raise VersionError(f'Hay un bloqueo de escritura antiguo en {lock}. Si no hay otra operación de Buky en curso, bórralo y reintenta.') from None
                 raise VersionError('La empresa tiene otra escritura en curso. No se guardaron cambios; reintenta en unos segundos.') from None
             time.sleep(0.1)
     try:
@@ -144,7 +170,7 @@ def snapshot(path, data, parent, reason, author):
     identifier = f'r{number:06d}-{sha}'
     result['_version'].update({'id': identifier, 'sha256': sha})
     target = revision_path(path, identifier)
-    target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    private_mkdir(target.parent)
     if target.exists():
         # A failed previous commit can leave an unreferenced snapshot. Never overwrite it.
         raise VersionError('Ya existe un snapshot con ese identificador. Revisa la recuperación antes de reintentar.')

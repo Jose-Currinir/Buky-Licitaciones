@@ -12,7 +12,7 @@ GET listado; GET /{codigo} detalle. Header ticket. Filtros: q o id (excluyentes)
 
 No hay filtro codigo_organismo en v2; filtrar localmente. La existencia de orden_compra.id_orden_compra es mejor indicador de OC emitida que asumir el estado oc_emitida. Campos de documentos pueden aportar solo id/nombre: no inventar URLs de descarga. La visibilidad de cotizaciones depende de etapa/llamado.
 
-## Comportamiento real observado (30-10-2026, con ticket)
+## Comportamiento real observado (2026-10-30, con ticket)
 
 - **v2 Compra Ágil**: `tamano_pagina` debe estar entre 10 y 50 (la API responde 400 con 1–9). Sin `estado`, una búsqueda devuelve hasta 10.000 resultados; con `estado=publicada` (lo que usa la sincronización) bajan a decenas. Cada solicitud tardó entre 12 y 18 s, y hubo respuestas 504 que se resolvieron reintentando.
 - **v2, campos**: vienen anidados (`estado.codigo`, `fechas.fecha_cierre`, `institucion.organismo_comprador`, `institucion.nombre_region`, `montos.monto_disponible_clp`, `convocatoria.estado_convocatoria`, `resumen.total_ofertas_recibidas`, `documentos[].nombre`). `fechas.fecha_cierre` viene sin zona (hora de Chile), mientras `fecha_cierre_primer_llamado` rotula esa misma hora local como `Z`: no la uses como UTC.
@@ -20,7 +20,7 @@ No hay filtro codigo_organismo en v2; filtrar localmente. La existencia de orden
 - **Cuota**: la guía describe el 429 como cuota **diaria** agotada, que se repone al cambiar el día calendario. En la prueba apareció un 429 tras unas 35 solicitudes del día, así que la cuota real de un ticket puede ser mucho menor que 10.000: sincroniza con pocos términos y bien elegidos.
 - La región de `institucion` y de `Comprador` es la del **comprador**; se guarda como `region_comprador`, nunca como región de entrega.
 
-La sincronización de licitaciones por fecha descarta las cerradas y las ajenas al catálogo, y trae el detalle de hasta 20 procesos.
+La sincronización de licitaciones por fecha descarta las cerradas y las ajenas al catálogo, y trae el detalle de hasta 20 procesos. La v1 no busca por palabras: `--q` con `--recurso licitaciones` es un error. Los códigos de estado se guardan con su nombre (`5` → `publicada`), para que listado y detalle coincidan.
 
 ## Consumo y límites
 
@@ -28,7 +28,7 @@ Las condiciones generales publicadas fijan 10.000 solicitudes/día por ticket, m
 
 `ApiExecutor` comparte estas protecciones entre consultas y perfiles de un mismo directorio de datos:
 
-- Ritmo inicial de 0,5 segundos entre solicitudes reales y caché privada de 600 segundos. La clave elimina `ticket` antes de calcular el hash; no se almacenan URLs v1 con credencial. Los archivos se guardan con permisos privados en `<DATA_DIR>/cache/api`. En la ejecución independiente de `mercado_publico.py`, el directorio operativo es la carpeta que contiene `--out`.
+- Ritmo inicial de 0,5 segundos entre solicitudes reales y caché privada de 600 segundos. La clave elimina `ticket` antes de calcular el hash; no se almacenan URLs v1 con credencial. Los archivos se guardan con permisos privados en `<DATA_DIR>/cache/api`. En la ejecución independiente de `mercado_publico.py`, el directorio operativo es `--data-dir`, o la carpeta del `--env-file`, o `BUKY_DATA_DIR`: así comparte caché y pausa con `buky.py`, sin importar dónde quede `--out`.
 - Una respuesta reutilizada conserva `consultado_en` original y se cuenta en `respuestas_cache`; nunca se presenta como una observación nueva. Un acierto de caché no hace red. Los contadores `solicitudes_reales` y `reintentos` permiten revisar el consumo local, no el saldo oficial del ticket.
 - Presupuesto local de 100 intentos reales por sincronización manual y 25 por perfil en el servicio. Incluye reintentos y frena el lote al agotarse; no es una cuota adicional ni reemplaza el límite oficial.
 - Como máximo tres intentos por solicitud para errores de red, timeout y HTTP 500/502/503/504, con esperas exponenciales de 1 y 2 segundos además del ritmo. No reintentar 400/401/403/404: corregir filtros, credencial o código según corresponda.

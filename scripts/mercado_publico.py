@@ -3,6 +3,7 @@
 import argparse
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
+from http.client import HTTPException
 import hashlib
 import json
 import os
@@ -13,7 +14,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit, quote
 from urllib.request import Request
-from base_empresa import display_rut, DataError, moment, utc_now
+from base_empresa import display_rut, DataError, moment, utc_iso
 from ticket_config import configured_ticket, ConfigError
 
 
@@ -43,6 +44,7 @@ def parser():
     p.add_argument('--cambio-desde')
     p.add_argument('--cambio-hasta')
     p.add_argument('--env-file', help='Ruta explícita al .env privado (no se ejecuta como shell)')
+    p.add_argument('--data-dir', help='Directorio privado para caché y pausa compartida (por defecto, el del --env-file)')
     p.add_argument('--out', required=True, help='Archivo JSON en espacio privado')
     return p
 
@@ -129,7 +131,7 @@ def _utc(value=None):
 
 
 def _iso(value):
-    return _utc(value).isoformat().replace('+00:00', 'Z')
+    return utc_iso(_utc(value))
 
 
 def retry_time(value, now=None):
@@ -191,7 +193,7 @@ def fetch(request, opener=None, now_fn=None):
             status=code, retry_at=retry_at, retryable=transient,
             kind='transitorio' if transient else 'http',
         ) from None
-    except (URLError, TimeoutError, OSError):
+    except (URLError, TimeoutError, OSError, HTTPException):
         raise ApiError(
             'No fue posible consultar la API; revisa conexión y disponibilidad.',
             retryable=True, kind='red',
@@ -365,6 +367,15 @@ def save_json(path, data):
         json.dump(data, f, ensure_ascii=False, indent=2)
         f.write('\n')
 
+def operating_directory(a):
+    """Caché y pausa por cuota se comparten con buky.py: viven en el directorio de datos, no junto a --out."""
+    if a.data_dir:
+        return Path(a.data_dir).expanduser().resolve()
+    if a.env_file:
+        return Path(a.env_file).expanduser().resolve().parent
+    return Path(os.environ.get('BUKY_DATA_DIR', '~/.buky/licitaciones')).expanduser().resolve()
+
+
 def main(argv=None):
     a = parser().parse_args(argv)
     try:
@@ -372,7 +383,7 @@ def main(argv=None):
         path = Path(a.out)
         if path.exists():
             raise ApiError('El archivo destino ya existe; usa otro nombre para conservar la fuente.')
-        data = ApiExecutor(directory=path.expanduser().resolve().parent).fetch(request)
+        data = ApiExecutor(directory=operating_directory(a)).fetch(request)
         save_json(path, data)
     except (ApiError, ConfigError) as e:
         print(str(e), file=sys.stderr)

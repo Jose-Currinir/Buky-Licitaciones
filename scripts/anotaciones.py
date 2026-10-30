@@ -196,8 +196,17 @@ def mark_requirement(directory, rut, code, identifier, state, evidence=None, sou
 
 
 def _amount(value, error_key):
+    text = str(value).strip().replace(' ', '').replace('$', '')
+    # Formato chileno: punto de miles y coma decimal (2.100.000 o 2.100.000,50).
+    if re.fullmatch(r'\d{1,3}\.\d{3}', text):
+        # «2.100» es ambiguo (¿dos mil cien o dos coma uno?): se pide el monto sin separadores.
+        raise AnnotationError(tr('annotation.ambiguous_amount', valor=text))
+    if re.fullmatch(r'\d{1,3}(\.\d{3})+(,\d+)?', text):
+        text = text.replace('.', '').replace(',', '.')
+    elif re.fullmatch(r'\d+,\d+', text):
+        text = text.replace(',', '.')
     try:
-        number = Decimal(str(value))
+        number = Decimal(text)
     except InvalidOperation:
         raise AnnotationError(tr(error_key)) from None
     if not number.is_finite() or number <= 0:

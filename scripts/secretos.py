@@ -1,7 +1,6 @@
 """Secretos en Keychain, Secret Service o DPAPI. Nunca usa texto plano de respaldo."""
 import hashlib
 import json
-import os
 from pathlib import Path
 import platform
 import re

@@ -20,7 +20,6 @@ El asistente sustituye rutas y RUT, y evita exhibir la base completa si contiene
 
 Para los hechos que usa la evaluación (catálogo, exclusiones, regiones, horas de preparación y margen mínimo) usa `buky.py catalogo` y `buky.py condiciones`; ver la tabla de [evaluacion.md](evaluacion.md). Este formato manual queda para otros antecedentes.
 
-
 JSON objeto con campo, valor, estado (documentado/declarado/inferido/pendiente), fuente y consultado_en ISO-8601 con zona. Opcionales: documento, ubicacion, valido_hasta. Cada incorporación añade una evidencia; no destruye la anterior. Ejemplo: identidad_confirmada=true con estado declarado y fuente usuario. No etiquetar un dato como documentado sin evidencia localizada.
 
 ## Registro de mercado
