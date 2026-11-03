@@ -96,7 +96,7 @@ def prompt_ticket(terminal=False):
     if terminal or linux_headless:
         return _terminal_ticket()
     if sys.platform == 'darwin':
-        code = '''text returned of (display dialog "Pega tu ticket de Mercado Público. Se guardará en el .env privado indicado en la terminal." with title "Buky Licitaciones" default answer "" with hidden answer buttons {"Cancelar", "Guardar"} default button "Guardar" cancel button "Cancelar")'''
+        code = '''text returned of (display dialog "Pega tu ticket de Mercado Público. Se guardará en el .env privado indicado en la terminal." with title "Butake Licitaciones" default answer "" with hidden answer buttons {"Cancelar", "Guardar"} default button "Guardar" cancel button "Cancelar")'''
         result = subprocess.run(['osascript', '-e', code], capture_output=True, text=True)
         if result.returncode:
             raise ConfigError('Configuración cancelada o diálogo no disponible. Puedes usar --terminal.')
@@ -107,7 +107,7 @@ def prompt_ticket(terminal=False):
         root = tkinter.Tk()
         root.withdraw()
         try:
-            value = simpledialog.askstring('Buky Licitaciones', 'Pega tu ticket de Mercado Público:', show='*', parent=root)
+            value = simpledialog.askstring('Butake Licitaciones', 'Pega tu ticket de Mercado Público:', show='*', parent=root)
         finally:
             root.destroy()
         if value is None:

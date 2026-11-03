@@ -64,7 +64,7 @@ class SecretStore:
             raise SecretError(tr('secrets.unavailable'))
         attributes = ['service', SERVICE, 'account', account]
         if action == 'save':
-            return [executable, 'store', '--label', 'Buky Licitaciones', *attributes]
+            return [executable, 'store', '--label', 'Butake Licitaciones', *attributes]
         if action == 'load':
             return [executable, 'lookup', *attributes]
         return [executable, 'clear', *attributes]
@@ -82,7 +82,7 @@ class SecretStore:
         blob, keepalive = _dpapi_blob(value.encode('utf-8'))
         encrypted, output = _dpapi_blob(b'')
         import ctypes
-        if not ctypes.windll.crypt32.CryptProtectData(byref(blob), 'Buky Licitaciones', None, None, None, 1, byref(encrypted)):
+        if not ctypes.windll.crypt32.CryptProtectData(byref(blob), 'Butake Licitaciones', None, None, None, 1, byref(encrypted)):
             raise SecretError(tr('secrets.backend_failed'))
         try:
             content = ctypes.string_at(encrypted.pbData, encrypted.cbData)

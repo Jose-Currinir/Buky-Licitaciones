@@ -368,12 +368,12 @@ def save_json(path, data):
         f.write('\n')
 
 def operating_directory(a):
-    """Caché y pausa por cuota se comparten con buky.py: viven en el directorio de datos, no junto a --out."""
+    """Caché y pausa por cuota se comparten con butake.py: viven en el directorio de datos, no junto a --out."""
     if a.data_dir:
         return Path(a.data_dir).expanduser().resolve()
     if a.env_file:
         return Path(a.env_file).expanduser().resolve().parent
-    return Path(os.environ.get('BUKY_DATA_DIR', '~/.buky/licitaciones')).expanduser().resolve()
+    return Path(os.environ.get('BUTAKE_DATA_DIR', '~/.butake/licitaciones')).expanduser().resolve()
 
 
 def main(argv=None):

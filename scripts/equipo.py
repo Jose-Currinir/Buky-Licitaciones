@@ -22,7 +22,7 @@ TIPOS = frozenset({'resumen', 'recordatorio', 'mensaje'})
 ESTADOS_FINALES = frozenset({'enviado', 'descartado'})
 EMAIL = re.compile(r'[^@\s<>,;:"()\[\]\\]+@[^@\s<>,;:"()\[\]\\]+\.[^@\s<>,;:"()\[\]\\]+')
 CONTROL = re.compile(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]')
-SUBJECT_PREFIX = '[Buky Licitaciones] '
+SUBJECT_PREFIX = '[Butake Licitaciones] '
 MAX_BODY = 20000
 
 
@@ -243,7 +243,7 @@ def resolve(directory, identifier, status, reference=None, rut=None):
 
 
 def prepare(directory, rut, kind, targets=None, subject=None, text=None, reminder_id=None, summary=None, stamp=None):
-    """Crea un borrador pendiente. El resumen llega ya renderizado desde buky.today."""
+    """Crea un borrador pendiente. El resumen llega ya renderizado desde butake.today."""
     if kind not in TIPOS:
         raise TeamError(tr('error.invalid_choice'))
     rut = base.normalize_rut(rut)

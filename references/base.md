@@ -1,6 +1,6 @@
 # Base local por perfil
 
-El código se instala una vez; los datos pertenecen a cada usuario y perfil. Nunca guardes la base dentro de la carpeta de skills ni junto a los scripts instalados: usa `<DATA_DIR>`, un directorio privado elegido por el usuario (por defecto `~/.buky/licitaciones`). `base_empresa.py` exige `--data-dir` explícito. No hay servidor, cuenta central ni sincronización de perfiles entre usuarios.
+El código se instala una vez; los datos pertenecen a cada usuario y perfil. Nunca guardes la base dentro de la carpeta de skills ni junto a los scripts instalados: usa `<DATA_DIR>`, un directorio privado elegido por el usuario (por defecto `~/.butake/licitaciones`). `base_empresa.py` exige `--data-dir` explícito. No hay servidor, cuenta central ni sincronización de perfiles entre usuarios.
 
 Base JSON por RUT normalizado: versión de esquema, `tipo_perfil` (`empresa` o `persona_natural`), nombre, `inicio_actividades` (`true`, `false` o `null`), hechos con evidencia, registros de mercado, preferencias, oportunidades y versiones anteriores. Las bases anteriores sin tipo se leen como `empresa`. Escritura atómica con bloqueo y rechazo de lecturas desactualizadas. Cada guardado real conserva un snapshot completo encadenado en historial/base; usa `historial` y `restaurar` según [versiones.md](versiones.md). No editar base.json a mano ni ejecutar escrituras concurrentes contra el perfil. Un cambio de RUT selecciona otra base; nunca modifica la anterior. El almacenamiento local no equivale a cifrado.
 
@@ -18,7 +18,7 @@ El asistente sustituye rutas y RUT, y evita exhibir la base completa si contiene
 
 ## Hecho
 
-Para los hechos que usa la evaluación (catálogo, exclusiones, regiones, horas de preparación y margen mínimo) usa `buky.py catalogo` y `buky.py condiciones`; ver la tabla de [evaluacion.md](evaluacion.md). Este formato manual queda para otros antecedentes.
+Para los hechos que usa la evaluación (catálogo, exclusiones, regiones, horas de preparación y margen mínimo) usa `butake.py catalogo` y `butake.py condiciones`; ver la tabla de [evaluacion.md](evaluacion.md). Este formato manual queda para otros antecedentes.
 
 JSON objeto con campo, valor, estado (documentado/declarado/inferido/pendiente), fuente y consultado_en ISO-8601 con zona. Opcionales: documento, ubicacion, valido_hasta. Cada incorporación añade una evidencia; no destruye la anterior. Ejemplo: identidad_confirmada=true con estado declarado y fuente usuario. No etiquetar un dato como documentado sin evidencia localizada.
 

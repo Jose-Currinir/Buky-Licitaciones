@@ -1,6 +1,6 @@
 # Avisos por correo al titular y al equipo
 
-La skill **no envía correos ni guarda contraseñas de correo**. Guarda el equipo de cada perfil en `estado.sqlite3` y prepara borradores en una bandeja de salida. Quien envía es la **herramienta de correo del asistente**: el conector o complemento de Gmail u Outlook que el usuario haya habilitado en ChatGPT, Claude, Codex u otro host. Así la autorización y los permisos los gestiona el usuario en su asistente, no Buky.
+La skill **no envía correos ni guarda contraseñas de correo**. Guarda el equipo de cada perfil en `estado.sqlite3` y prepara borradores en una bandeja de salida. Quien envía es la **herramienta de correo del asistente**: el conector o complemento de Gmail u Outlook que el usuario haya habilitado en ChatGPT, Claude, Codex u otro host. Así la autorización y los permisos los gestiona el usuario en su asistente, no Butake.
 
 ## 1. Comprobar el complemento antes de ofrecer envíos
 
@@ -21,8 +21,8 @@ Mientras tanto puedes configurar el equipo y dejar los borradores listos, o most
 Cuando el usuario pida configurar el correo, avisos o el equipo, consulta primero el estado y ofrece un menú numerado corto, en este orden y adaptado a lo que ya existe:
 
 ```bash
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json equipo listar --rut "<RUT>"
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso pendientes --rut "<RUT>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json equipo listar --rut "<RUT>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso pendientes --rut "<RUT>"
 ```
 
 > **Correo y equipo de <perfil>** — Gmail: conectado / no conectado
@@ -42,10 +42,10 @@ Si el equipo está vacío, destaca la opción 1 como siguiente paso. Si hay borr
 Cada persona pertenece a un solo perfil (RUT). Rol `titular` es el propio usuario (`--para yo`); `equipo` son los demás. `--avisos` indica qué recibe de forma predeterminada: `recordatorios`, `resumen`, ambos o ninguno (vacío).
 
 ```bash
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json equipo agregar --rut "<RUT>" --nombre "<NOMBRE>" --correo "<CORREO>" --rol titular
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json equipo agregar --rut "<RUT>" --nombre "<NOMBRE>" --correo "<CORREO>" --avisos resumen
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json equipo editar --rut "<RUT>" --id "<ID>" --avisos recordatorios resumen
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json equipo quitar --rut "<RUT>" --id "<ID>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json equipo agregar --rut "<RUT>" --nombre "<NOMBRE>" --correo "<CORREO>" --rol titular
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json equipo agregar --rut "<RUT>" --nombre "<NOMBRE>" --correo "<CORREO>" --avisos resumen
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json equipo editar --rut "<RUT>" --id "<ID>" --avisos recordatorios resumen
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json equipo quitar --rut "<RUT>" --id "<ID>"
 ```
 
 Para «agregarme», usa el correo de la cuenta conectada en el complemento si la herramienta lo expone y confírmalo; si no, pregúntalo. Pide nombre y correo en una sola frase y confirma con una línea («Agregué a Ana <ana@empresa.cl>, recibirá el resumen diario»). `quitar` desactiva y conserva el historial; `equipo agregar` con el mismo correo la reactiva. Solo agrega correos que el usuario dio o confirmó.
@@ -53,11 +53,11 @@ Para «agregarme», usa el correo de la cuenta conectada en el complemento si la
 ## 4. Preparar, confirmar, enviar y registrar
 
 ```bash
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo resumen
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo recordatorio --recordatorio "<ID_RECORDATORIO>" --para yo
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo mensaje --para equipo --asunto "<ASUNTO>" --texto "<TEXTO>"
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso enviado --id "<ID>" --referencia "<ID_DEL_MENSAJE>"
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json aviso descartar --id "<ID>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo resumen
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo recordatorio --recordatorio "<ID_RECORDATORIO>" --para yo
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso preparar --rut "<RUT>" --tipo mensaje --para equipo --asunto "<ASUNTO>" --texto "<TEXTO>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso enviado --id "<ID>" --referencia "<ID_DEL_MENSAJE>"
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json aviso descartar --id "<ID>"
 ```
 
 `--para` acepta `yo`, `equipo`, `todos` o ids del equipo. Sin `--para`, el resumen va a quienes tienen `resumen` y el recordatorio a quienes tienen `recordatorios`. El borrador devuelve `para`, `asunto` y `cuerpo` ya listos: úsalos tal cual en la herramienta de correo, con todos los destinatarios en «Para», sin copia oculta ni adjuntos que el usuario no pidió.
@@ -66,7 +66,7 @@ Antes de cada envío muestra un resumen y espera un «sí» explícito:
 
 > Voy a enviar desde tu Gmail:
 > **Para:** ana@empresa.cl, yo@empresa.cl
-> **Asunto:** [Buky Licitaciones] Qué conviene revisar hoy · 29-10-2026
+> **Asunto:** [Butake Licitaciones] Qué conviene revisar hoy · 29-10-2026
 > 3 oportunidades, la primera cierra el 02-11 a las 15:00. ¿Lo envío?
 
 Tras enviar, marca `aviso enviado` con el id que devuelva la herramienta, si lo hay. Si el usuario cancela, usa `aviso descartar`. Si el envío falla, deja el borrador pendiente y di qué pasó. Una aprobación vale para ese correo; no envíes otros borradores en lote sin preguntar.
@@ -74,8 +74,8 @@ Tras enviar, marca `aviso enviado` con el id que devuelva la herramienta, si lo 
 ## 5. Avisos automáticos
 
 ```bash
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json servicio configurar --correo
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json servicio configurar --no-correo
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json servicio configurar --correo
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json servicio configurar --no-correo
 ```
 
 Con `--correo`, cada recordatorio que el servicio local entrega también deja un borrador para quienes tienen `recordatorios`. El servicio **no envía**: los borradores esperan a la próxima conversación, donde los ofreces para enviar con el complemento. Explica esto al activarlo para que nadie espere un correo sin abrir el asistente. Activarlo no habilita el servicio; eso sigue requiriendo una orden explícita (ver asistente.md).

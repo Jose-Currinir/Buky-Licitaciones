@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Punto de entrada local de Buky Licitaciones. Python 3.10+, sin dependencias."""
+"""Punto de entrada local de Butake Licitaciones. Python 3.10+, sin dependencias."""
 import argparse
 from datetime import datetime, timezone
 import hashlib
@@ -27,11 +27,11 @@ from i18n import tr
 from presentacion import local_date, print_json, render_evaluation
 
 
-DEFAULT_DATA_DIR = '~/.buky/licitaciones'
+DEFAULT_DATA_DIR = '~/.butake/licitaciones'
 MAX_SAVED_REPORTS = 30
 
 
-class BukyError(ValueError):
+class ButakeError(ValueError):
     pass
 
 
@@ -43,7 +43,7 @@ def profile_zone(directory, rut):
 
 
 def data_directory(value=None):
-    return Path(value or os.environ.get('BUKY_DATA_DIR', DEFAULT_DATA_DIR)).expanduser().resolve()
+    return Path(value or os.environ.get('BUTAKE_DATA_DIR', DEFAULT_DATA_DIR)).expanduser().resolve()
 
 
 def env_path(directory):
@@ -83,7 +83,7 @@ def require_ticket(directory):
     try:
         return ticket_config.configured_ticket(env_path(directory))
     except ticket_config.ConfigError:
-        raise BukyError(tr('sync.ticket_missing', comando=ticket_command(directory))) from None
+        raise ButakeError(tr('sync.ticket_missing', comando=ticket_command(directory))) from None
 
 
 def sync_company(directory, rut, queries=None, resource='agil', date=None, provider=None, ticket=None,
@@ -103,16 +103,16 @@ def sync_company(directory, rut, queries=None, resource='agil', date=None, provi
                 seen.add(key)
         queries = cleaned
         if not queries:
-            raise BukyError(tr('sync.no_queries'))
+            raise ButakeError(tr('sync.no_queries'))
     elif resource == 'licitaciones':
         if not date and not provider:
-            raise BukyError(tr('sync.v1_filter_required'))
+            raise ButakeError(tr('sync.v1_filter_required'))
         queries = [None]
     else:
-        raise BukyError(tr('sync.unknown_resource'))
+        raise ButakeError(tr('sync.unknown_resource'))
     if resource == 'licitaciones' and any(query and query.strip() for query in queries or []):
         # La v1 no filtra por palabras: el catálogo se aplica después, al enfocar los resultados.
-        raise BukyError(tr('sync.v1_no_query'))
+        raise ButakeError(tr('sync.v1_no_query'))
     ticket = ticket or require_ticket(directory)
     if client is None and fetch_fn is None:
         client = opportunities.api.ApiExecutor(directory=directory, max_attempts=request_budget)
@@ -191,7 +191,7 @@ def evaluate_company(directory, rut, code=None, active_only=False, now=None):
     if code:
         matches = [item for key, item in company['oportunidades'].items() if item['codigo'].casefold() == code.strip().casefold()]
         if not matches:
-            raise BukyError(tr('annotation.opportunity_not_found', codigo=code))
+            raise ButakeError(tr('annotation.opportunity_not_found', codigo=code))
     elif active_only:
         matches = base.select_items(company, 'activas', now=now)
     else:
@@ -226,7 +226,7 @@ def fetch_process(directory, rut, code, fetch_fn=None, consulted_fn=None, client
     normalized = opportunities.normalize_response(data, resource, source, consulted)
     normalized['items'] = [item for item in normalized['items'] if item['codigo'].casefold() == code.casefold()]
     if not normalized['items']:
-        raise BukyError(tr('evaluate.not_found_remote', codigo=code))
+        raise ButakeError(tr('evaluate.not_found_remote', codigo=code))
     normalized['raw_pages'] = [(data, consulted)]
     persisted = opportunities.persist_sync(directory, rut, normalized, resource)
     return {
@@ -254,7 +254,7 @@ def stage_counts(company, now=None):
 
 def today(directory, rut, queries=None, synchronize=False, code=None, limit=5, now=None, fetch_fn=None, consulted_fn=None):
     if limit < 1 or limit > 100:
-        raise BukyError(tr('error.limit_range', maximo=100))
+        raise ButakeError(tr('error.limit_range', maximo=100))
     sync_result = None
     if synchronize and code:
         sync_result = fetch_process(directory, rut, code, fetch_fn=fetch_fn, consulted_fn=consulted_fn)
@@ -280,7 +280,7 @@ def today(directory, rut, queries=None, synchronize=False, code=None, limit=5, n
 def write_report(directory, rut, limit=30, out=None, now=None):
     """Escribe el informe HTML privado del perfil y devuelve su ruta y cifras clave."""
     if limit < 1 or limit > 200:
-        raise BukyError(tr('error.limit_range', maximo=200))
+        raise ButakeError(tr('error.limit_range', maximo=200))
     directory = data_directory(directory)
     now = now or datetime.now(timezone.utc)
     company, evaluations = evaluate_company(directory, rut, active_only=True, now=now)
@@ -288,9 +288,9 @@ def write_report(directory, rut, limit=30, out=None, now=None):
     if out:
         target = Path(out).expanduser().resolve()
         if target.suffix.lower() != '.html':
-            raise BukyError(tr('report.out_extension'))
+            raise ButakeError(tr('report.out_extension'))
         if target.exists():
-            raise BukyError(tr('report.out_exists'))
+            raise ButakeError(tr('report.out_exists'))
     else:
         stamp = now.astimezone(timezone.utc).strftime('%Y%m%dT%H%M%SZ')
         target = base.path_for(directory, rut).parent / 'informes' / f'informe-{stamp}.html'
@@ -305,8 +305,8 @@ def write_report(directory, rut, limit=30, out=None, now=None):
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog='buky-licitaciones', description=tr('app.name'))
-    parser.add_argument('--data-dir', help='Directorio privado de datos (por defecto, BUKY_DATA_DIR o ~/.buky/licitaciones)')
+    parser = argparse.ArgumentParser(prog='butake-licitaciones', description=tr('app.name'))
+    parser.add_argument('--data-dir', help='Directorio privado de datos (por defecto, BUTAKE_DATA_DIR o ~/.butake/licitaciones)')
     parser.add_argument('--locale', default='es')
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--version', action='store_true')
@@ -582,7 +582,7 @@ def command_recordar(args, directory, now):
 def command_recordatorios(args, directory, now):
     if args.cancelar:
         if not args.rut:
-            raise BukyError(tr('error.company_required', args.locale))
+            raise ButakeError(tr('error.company_required', args.locale))
         recordatorios.cancel(directory, args.rut, args.cancelar)
         result = {'estado': 'cancelado', 'id': args.cancelar}
     else:
@@ -660,7 +660,7 @@ def command_correo(args, directory, now):
 
 def command_diagnostico(args, directory, now):
     if args.limite < 1 or args.limite > 50:
-        raise BukyError(tr('error.limit_range', maximo=50))
+        raise ButakeError(tr('error.limit_range', maximo=50))
     result = diagnostico.diagnose(base.load(directory, args.rut), now, args.limite)
     if args.json:
         print_json(result)
@@ -833,7 +833,7 @@ def command_servicio(args, directory, now):
 
 def command_hoy(args, directory, now):
     if args.q and not args.sincronizar:
-        raise BukyError(tr('today.query_requires_sync'))
+        raise ButakeError(tr('today.query_requires_sync'))
     company, report = today(directory, args.rut, args.q, args.sincronizar, args.codigo, args.limite, now)
     if args.json:
         # El informe completo queda guardado en «archivo»; la salida se limita para no saturar al asistente.
@@ -869,7 +869,7 @@ COMMANDS = {
 
 # Errores con mensaje pensado para el usuario; los demás se informan como error genérico.
 DOMAIN_ERRORS = (
-    BukyError, base.DataError, opportunities.OpportunityError, opportunities.api.ApiError, ticket_config.ConfigError,
+    ButakeError, base.DataError, opportunities.OpportunityError, opportunities.api.ApiError, ticket_config.ConfigError,
     recordatorios.ReminderError, servicio.ServiceError, correo.MailError, correo.secretos.SecretError, equipo.TeamError,
     anotaciones.AnnotationError, sii.SiiError,
 )

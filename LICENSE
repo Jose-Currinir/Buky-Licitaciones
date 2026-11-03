@@ -1,4 +1,4 @@
-Licencia Buky de Código Visible 1.0
+Licencia Butake de Código Visible 1.0
 
 Copyright (c) 2026 Butake SpA. Todos los derechos reservados, salvo los permisos
 expresamente concedidos en esta licencia.
@@ -7,8 +7,8 @@ Esta es una licencia de código visible: puedes ver, instalar y usar el Software
 en las condiciones siguientes, pero no es una licencia de código abierto.
 
 1. Definiciones
-   a) «El Software»: la skill Buky Licitaciones publicada en
-      https://github.com/Jose-Currinir/Buky-Licitaciones, incluidos sus
+   a) «El Software»: la skill Butake Licitaciones publicada en
+      https://github.com/Jose-Currinir/Butake-Licitaciones, incluidos sus
       instrucciones, referencias, plantillas y scripts, en cualquier versión
       distribuida bajo esta licencia.
    b) «Tú»: la persona natural o jurídica que usa el Software.
@@ -25,7 +25,7 @@ en las condiciones siguientes, pero no es una licencia de código abierto.
    y evaluar oportunidades, estudiar el mercado, preparar y presentar tus
    ofertas y dar seguimiento a tus contratos. Obtén cada copia desde el
    repositorio oficial o mediante herramientas que la descarguen directamente
-   de él, como `npx skills add Jose-Currinir/Buky-Licitaciones`.
+   de él, como `npx skills add Jose-Currinir/Butake-Licitaciones`.
 
 3. Modificaciones
    Puedes modificar tu copia para el uso permitido en la cláusula 2.
@@ -104,4 +104,4 @@ en las condiciones siguientes, pero no es una licencia de código abierto.
 
 Para otros usos, incluidos la redistribución y los servicios a terceros,
 solicita una licencia comercial a Butake SpA abriendo un issue en
-https://github.com/Jose-Currinir/Buky-Licitaciones/issues.
+https://github.com/Jose-Currinir/Butake-Licitaciones/issues.

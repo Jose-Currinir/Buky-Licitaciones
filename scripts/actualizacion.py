@@ -12,7 +12,7 @@ import version_store
 from i18n import tr
 
 
-VERSION_URL = 'https://raw.githubusercontent.com/Jose-Currinir/Buky-Licitaciones/main/VERSION'
+VERSION_URL = 'https://raw.githubusercontent.com/Jose-Currinir/Butake-Licitaciones/main/VERSION'
 CHECK_EVERY = timedelta(hours=24)
 VERSION_PATTERN = re.compile(r'\d+\.\d+\.\d+')
 
@@ -33,7 +33,7 @@ def update_command(directory=None):
     """El comando depende de cómo se instaló: instalador propio, clon de git o `npx skills`."""
     directory = directory or skill_dir()
     if (directory / 'INSTALLATION.json').is_file():
-        return 'npx --no-install buky-licitaciones update'
+        return 'npx --no-install butake-licitaciones update'
     if (directory / '.git').exists():
         return f'git -C "{directory}" pull --ff-only'
     return 'npx skills update licitaciones-chile'
@@ -42,7 +42,7 @@ def update_command(directory=None):
 def fetch_latest(url=None, opener=None):
     opener = opener or request.urlopen
     try:
-        with opener(request.Request(url or VERSION_URL, headers={'User-Agent': 'buky-licitaciones'}), timeout=5) as response:
+        with opener(request.Request(url or VERSION_URL, headers={'User-Agent': 'butake-licitaciones'}), timeout=5) as response:
             text = response.read(64).decode('utf-8', 'replace').strip()
     except (urlerror.URLError, TimeoutError, OSError, ValueError):
         return None
@@ -55,7 +55,7 @@ def check(data_dir, now=None, force=False, opener=None, directory=None):
     installed = installed_version(directory)
     result = {'instalada': installed, 'disponible': None, 'comprobado_en': None, 'desde_cache': False,
               'comando_actualizar': update_command(directory)}
-    if os.environ.get('BUKY_SIN_ACTUALIZACIONES'):
+    if os.environ.get('BUTAKE_SIN_ACTUALIZACIONES'):
         return dict(result, estado='desactivada')
     cache = Path(data_dir).expanduser().resolve() / 'cache' / 'actualizacion.json'
     cached = {}
@@ -68,7 +68,7 @@ def check(data_dir, now=None, force=False, opener=None, directory=None):
     if fresh:
         result.update(disponible=cached['disponible'], comprobado_en=cached['comprobado_en'], desde_cache=True)
     else:
-        latest = fetch_latest(os.environ.get('BUKY_URL_VERSION'), opener)
+        latest = fetch_latest(os.environ.get('BUTAKE_URL_VERSION'), opener)
         if latest is None:
             return dict(result, estado='no_verificada', mensaje=tr('update.unverified'))
         result.update(disponible=latest, comprobado_en=base.utc_iso(now))
