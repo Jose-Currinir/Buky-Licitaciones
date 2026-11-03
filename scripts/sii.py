@@ -61,7 +61,7 @@ class _SameHostRedirect(request.HTTPRedirectHandler):
 def _open(url, method='GET', opener=None):
     opener = opener or request.build_opener(_SameHostRedirect()).open
     try:
-        return opener(request.Request(url, method=method, headers={'User-Agent': 'buky-licitaciones'}), timeout=60)
+        return opener(request.Request(url, method=method, headers={'User-Agent': 'butake-licitaciones'}), timeout=60)
     except (urlerror.URLError, TimeoutError, OSError):
         raise SiiError(tr('sii.network')) from None
 

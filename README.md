@@ -1,6 +1,6 @@
 <div align="center">
 
-# Buky Licitaciones
+# Butake Licitaciones
 
 **Tu asistente para decidir qué conviene licitar en Mercado Público y Compra Ágil de Chile.**
 
@@ -13,7 +13,7 @@ te recuerda los cierres y avisa a tu equipo. Tus datos se quedan en tu computado
 ![Licencia](https://img.shields.io/badge/licencia-c%C3%B3digo%20visible-orange)
 
 ```bash
-npx skills add Jose-Currinir/Buky-Licitaciones
+npx skills add Jose-Currinir/Butake-Licitaciones
 ```
 
 [Instalar](#instalación) · [Qué puedes pedir](#qué-puedes-pedir) · [Privacidad](#privacidad-y-seguridad) · [Contribuir](#contribuir) · [Licencia](#licencia)
@@ -39,7 +39,7 @@ No necesitas aprender comandos. La skill conversa, guarda la evidencia y te dice
 
 ## Qué puedes pedir
 
-| Le dices | Buky hace |
+| Le dices | Butake hace |
 | --- | --- |
 | «¿Qué conviene licitar hoy?» | Ordena las oportunidades abiertas en **participar**, **participar condicionado** o **no participar**, con motivo, cierre y siguiente paso. |
 | «Busca compras ágiles de software» | Consulta la API oficial con tu ticket, guarda cada página y te dice qué cubrió y qué quedó pendiente. |
@@ -61,14 +61,14 @@ La decisión es una ayuda con los datos disponibles, no una probabilidad de adju
 ### Con npx (recomendado)
 
 ```bash
-npx skills add Jose-Currinir/Buky-Licitaciones
+npx skills add Jose-Currinir/Butake-Licitaciones
 ```
 
 El instalador detecta tus asistentes y te deja elegir dónde instalarla. Para elegir sin preguntas:
 
 ```bash
 # Para todos tus proyectos, en Codex y Claude Code
-npx skills add Jose-Currinir/Buky-Licitaciones -g -a codex claude-code -y
+npx skills add Jose-Currinir/Butake-Licitaciones -g -a codex claude-code -y
 ```
 
 Funciona con Codex, Claude Code, Windsurf, Roo, Kiro, Qwen Code y [decenas de agentes compatibles](https://github.com/vercel-labs/skills).
@@ -78,10 +78,10 @@ Funciona con Codex, Claude Code, Windsurf, Roo, Kiro, Qwen Code y [decenas de ag
 
 ```bash
 # Claude Code
-git clone https://github.com/Jose-Currinir/Buky-Licitaciones.git ~/.claude/skills/licitaciones-chile
+git clone https://github.com/Jose-Currinir/Butake-Licitaciones.git ~/.claude/skills/licitaciones-chile
 
 # Codex y otros agentes que leen ~/.agents/skills
-git clone https://github.com/Jose-Currinir/Buky-Licitaciones.git ~/.agents/skills/licitaciones-chile
+git clone https://github.com/Jose-Currinir/Butake-Licitaciones.git ~/.agents/skills/licitaciones-chile
 ```
 
 La carpeta debe llamarse `licitaciones-chile`, igual que la skill.
@@ -102,17 +102,19 @@ npx skills update licitaciones-chile
 npx skills remove licitaciones-chile
 ```
 
-Actualizar o desinstalar nunca toca tus datos: viven aparte, en `~/.buky/licitaciones`.
+Actualizar o desinstalar nunca toca tus datos: viven aparte, en `~/.butake/licitaciones`.
+
+> **Si venías de la versión con el nombre anterior:** los datos estaban en `~/.buky/licitaciones` y las variables eran `BUKY_*`. Mueve esa carpeta a `~/.butake/licitaciones` a mano y renombra las variables a `BUTAKE_*` (`BUTAKE_DATA_DIR`, `BUTAKE_GMAIL_CLIENT_ID`, `BUTAKE_GMAIL_CLIENT_SECRET`, `BUTAKE_MICROSOFT_CLIENT_ID`, `BUTAKE_SIN_ACTUALIZACIONES`, `BUTAKE_URL_VERSION`). No hay migración automática. Si habías conectado el correo, los tokens guardados en el llavero del sistema conservan su entrada.
 
 ## Primeros pasos
 
-1. **Crea tu perfil.** Empresa o persona natural, y tu RUT. Una persona natural puede explorar sin inicio de actividades; para ofertar, Buky te dirá qué regularizar.
-2. **Configura tu ticket de Mercado Público** (opcional, pero necesario para buscar en vivo). Pídelo gratis en [chilecompra.cl/api](https://www.chilecompra.cl/api/). Buky abre un diálogo oculto para que lo pegues: **nunca lo escribas en el chat**.
+1. **Crea tu perfil.** Empresa o persona natural, y tu RUT. Una persona natural puede explorar sin inicio de actividades; para ofertar, Butake te dirá qué regularizar.
+2. **Configura tu ticket de Mercado Público** (opcional, pero necesario para buscar en vivo). Pídelo gratis en [chilecompra.cl/api](https://www.chilecompra.cl/api/). Butake abre un diálogo oculto para que lo pegues: **nunca lo escribas en el chat**.
 3. **Pregunta qué conviene licitar.** Sin ticket igual puedes evaluar procesos, bases o correos que tú aportes.
 
 ## Avisos por correo para ti y tu equipo
 
-Pídele «quiero recibir los avisos por correo» y Buky te muestra un menú:
+Pídele «quiero recibir los avisos por correo» y Butake te muestra un menú:
 
 ```text
 Correo y equipo de Mi Empresa SpA — Gmail: conectado
@@ -124,23 +126,23 @@ Correo y equipo de Mi Empresa SpA — Gmail: conectado
 6. Avisos automáticos de cierre por correo
 ```
 
-Buky no guarda contraseñas de correo ni envía nada por su cuenta. Prepara el mensaje y quien lo envía es **el complemento de correo de tu asistente** (por ejemplo, Gmail en ChatGPT), siempre después de mostrarte destinatarios y asunto y de recibir tu «sí». Si el complemento no está activado, Buky te explica cómo hacerlo.
+Butake no guarda contraseñas de correo ni envía nada por su cuenta. Prepara el mensaje y quien lo envía es **el complemento de correo de tu asistente** (por ejemplo, Gmail en ChatGPT), siempre después de mostrarte destinatarios y asunto y de recibir tu «sí». Si el complemento no está activado, Butake te explica cómo hacerlo.
 
 ## Privacidad y seguridad
 
-- **Local primero.** No hay servidor ni cuenta Buky. Perfiles, oportunidades, documentos y recordatorios quedan en tu computador.
+- **Local primero.** No hay servidor ni cuenta Butake. Perfiles, oportunidades, documentos y recordatorios quedan en tu computador.
 - **Secretos fuera del chat.** El ticket se ingresa en un diálogo o terminal ocultos y se guarda con permisos privados. Los tokens de correo van al llavero del sistema (Keychain, Secret Service o DPAPI), nunca en texto plano.
-- **Correo de solo lectura.** La conexión con Gmail o Microsoft usa OAuth con permisos de lectura. Buky no responde, mueve ni borra mensajes.
+- **Correo de solo lectura.** La conexión con Gmail o Microsoft usa OAuth con permisos de lectura. Butake no responde, mueve ni borra mensajes.
 - **Contenido externo no confiable.** Correos, bases y páginas se tratan como evidencia: si traen instrucciones para la IA, se ignoran.
 - **Historial verificable.** Cada cambio del perfil crea una revisión con huella SHA-256, y puedes restaurar o exportar un respaldo íntegro.
 - **Respeto a los límites oficiales.** Caché, ritmo pausado y un freno compartido ante el error 429. Nunca intenta eludir cuotas ni controles de acceso.
-- **Sin acciones a tus espaldas.** Buky no presenta ofertas, no firma, no escribe en foros ni acepta órdenes de compra. Esas acciones son siempre tuyas.
+- **Sin acciones a tus espaldas.** Butake no presenta ofertas, no firma, no escribe en foros ni acepta órdenes de compra. Esas acciones son siempre tuyas.
 
 <details>
 <summary><b>Dónde quedan tus datos</b></summary>
 
 ```text
-~/.buky/licitaciones/          # o la ruta de BUKY_DATA_DIR
+~/.butake/licitaciones/          # o la ruta de BUTAKE_DATA_DIR
 ├── .env                       # ticket de Mercado Público (permisos 0600)
 ├── estado.sqlite3             # recordatorios, equipo, bandeja de salida y cursores
 ├── cache/api/                 # respuestas recientes, sin credenciales
@@ -162,7 +164,7 @@ Buky no guarda contraseñas de correo ni envía nada por su cuenta. Prepara el m
 SKILL.md          instrucciones para el asistente
 references/       guías por tarea: API, oportunidades, evaluación, oferta, correo…
 scripts/          núcleo en Python, solo biblioteca estándar
-  buky.py           punto de entrada: perfiles, hoy, sincronizar, recordatorios, correo, equipo
+  butake.py           punto de entrada: perfiles, hoy, sincronizar, recordatorios, correo, equipo
   viabilidad.py     decisión participar / condicionado / no participar
   mercado_publico.py  cliente de las API v1 y v2 de Mercado Público
 assets/           plantillas de matriz de cumplimiento, oferta económica y perfil
@@ -174,7 +176,7 @@ La IA conversa e interpreta; los scripts hacen el trabajo determinista, como fec
 
 ## Lo que todavía no hace
 
-- No presenta ofertas: no existe una API oficial para eso, y Buky no usa accesos no documentados.
+- No presenta ofertas: no existe una API oficial para eso, y Butake no usa accesos no documentados.
 - No cubre todo el mercado si no sincronizas: «no hay oportunidades guardadas» no significa que no existan.
 - No consulta Planes Anuales de Compra (PAC) automáticamente; las recurrencias que detecta son señales, no procesos abiertos.
 - No sincroniza convenio marco, trato directo ni licitaciones privadas: orienta y evalúa con lo que tú aportes.
@@ -188,9 +190,9 @@ Si encuentras un problema de seguridad, no publiques los detalles: abre un *issu
 
 ## Licencia
 
-[Licencia Buky de Código Visible 1.0](LICENSE): **gratis para licitar por tu cuenta**, pero no es código abierto. Puedes instalar y usar Buky Licitaciones en las compras públicas de tu empresa o de tu persona natural, y lo que generes con ella es tuyo. También puedes modificar tu copia y proponer cambios. No puedes redistribuirla ni vender servicios a terceros con ella (asesorías, gestión de licitaciones para clientes o plataformas) sin una licencia comercial. Texto completo en [LICENSE](LICENSE).
+[Licencia Butake de Código Visible 1.0](LICENSE): **gratis para licitar por tu cuenta**, pero no es código abierto. Puedes instalar y usar Butake Licitaciones en las compras públicas de tu empresa o de tu persona natural, y lo que generes con ella es tuyo. También puedes modificar tu copia y proponer cambios. No puedes redistribuirla ni vender servicios a terceros con ella (asesorías, gestión de licitaciones para clientes o plataformas) sin una licencia comercial. Texto completo en [LICENSE](LICENSE).
 
-Buky Licitaciones no está afiliado a la Dirección ChileCompra ni a Mercado Público. Las decisiones de participar y el contenido de cada oferta son responsabilidad del proveedor.
+Butake Licitaciones no está afiliado a la Dirección ChileCompra ni a Mercado Público. Las decisiones de participar y el contenido de cada oferta son responsabilidad del proveedor.
 
 <div align="center">
 <sub>Hecho en Chile por <b>Butake SpA</b></sub>

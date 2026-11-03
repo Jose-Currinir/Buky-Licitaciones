@@ -32,7 +32,7 @@ Procesos actuales: APIs v1/v2, ficha y modificaciones oficiales. Futuro: PAC y a
 ## Cuando el usuario trae un código
 
 ```bash
-python3 "<SKILL_DIR>/scripts/buky.py" --data-dir "<DATA_DIR>" --json evaluar --rut "<RUT>" --codigo "<CODIGO>" --sincronizar
+python3 "<SKILL_DIR>/scripts/butake.py" --data-dir "<DATA_DIR>" --json evaluar --rut "<RUT>" --codigo "<CODIGO>" --sincronizar
 ```
 
 Trae el detalle oficial (Compra Ágil si el código termina en `-COTaa`; licitación v1 en los demás casos), lo guarda y lo evalúa. Sin ticket, el error indica el comando de configuración; mientras tanto, trabaja con la ficha o las bases que aporte el usuario. Después registra los requisitos de las bases con `requisito agregar`.

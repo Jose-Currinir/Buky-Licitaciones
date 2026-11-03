@@ -112,7 +112,7 @@ def write_lock(path, wait=None):
             if time.monotonic() >= deadline:
                 if lock_age_seconds(lock) > STALE_LOCK_SECONDS:
                     # Un PID reutilizado tras reiniciar puede parecer vivo: se pide comprobarlo a mano.
-                    raise VersionError(f'Hay un bloqueo de escritura antiguo en {lock}. Si no hay otra operación de Buky en curso, bórralo y reintenta.') from None
+                    raise VersionError(f'Hay un bloqueo de escritura antiguo en {lock}. Si no hay otra operación de Butake en curso, bórralo y reintenta.') from None
                 raise VersionError('La empresa tiene otra escritura en curso. No se guardaron cambios; reintenta en unos segundos.') from None
             time.sleep(0.1)
     try:

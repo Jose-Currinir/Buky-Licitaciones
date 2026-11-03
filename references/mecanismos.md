@@ -4,7 +4,7 @@ Resumen operativo del Reglamento de la Ley 19.886 (Decreto 661 de Hacienda, 2024
 
 ## Qué hace la skill con cada mecanismo
 
-| Mecanismo | Quién puede ofertar | Qué hace Buky |
+| Mecanismo | Quién puede ofertar | Qué hace Butake |
 | --- | --- | --- |
 | **Compra Ágil** (≤ 100 UTM, art. 97) | Por regla general, empresas de menor tamaño y proveedores locales. Si ninguna cotiza, la entidad puede abrirla al resto | Sincroniza (API v2), evalúa y recuerda cierres |
 | **Licitación pública** (art. 46 y siguientes) | Cualquier proveedor que cumpla las bases | Consulta por código o fecha (API v1), evalúa y recuerda cierres |

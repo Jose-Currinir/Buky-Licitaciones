@@ -1,4 +1,4 @@
 interface:
-  display_name: "Buky Licitaciones"
+  display_name: "Butake Licitaciones"
   short_description: "Viabilidad para empresas y personas naturales, con el siguiente paso claro"
   default_prompt: "Usa $licitaciones-chile: revisa si tengo un perfil (si no, ayúdame a crearlo) y dime qué conviene licitar hoy, por qué y qué debo resolver primero."

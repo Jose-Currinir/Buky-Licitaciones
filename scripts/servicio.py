@@ -162,10 +162,10 @@ def run_once(directory, synchronize=None, notifier=None, now=None, use_lock=True
                     with estado.connect(directory) as connection:
                         due = should_sync(connection, rut, now)
                     if due:
-                        import buky
-                        queries = buky.catalog_queries(directory, rut)
+                        import butake
+                        queries = butake.catalog_queries(directory, rut)
                         if queries:
-                            result = buky.sync_company(directory, rut, queries=queries, request_budget=25)
+                            result = butake.sync_company(directory, rut, queries=queries, request_budget=25)
                             company_report['sincronizacion'] = result
                             delay = config['intervalo_sincronizacion_minutos'] if not result['errores'] else 15
                             next_sync = base.utc_iso(now + timedelta(minutes=delay))
@@ -233,7 +233,7 @@ def run_forever(directory, sleep_fn=time.sleep, iterations=None, notifier=None):
 
 
 def service_command(directory):
-    script = Path(__file__).resolve().with_name('buky.py')
+    script = Path(__file__).resolve().with_name('butake.py')
     return [sys.executable, str(script), '--data-dir', str(Path(directory).expanduser().resolve()), 'servicio', 'iniciar']
 
 
@@ -251,14 +251,14 @@ def definition(directory, system=None):
         }
         content = plistlib.dumps(payload)
     elif system == 'Linux':
-        path = folder / 'buky-licitaciones.service'
-        content = ('[Unit]\nDescription=Buky Licitaciones\n\n[Service]\nType=simple\n'
+        path = folder / 'butake-licitaciones.service'
+        content = ('[Unit]\nDescription=Butake Licitaciones\n\n[Service]\nType=simple\n'
                    f'WorkingDirectory={directory}\nExecStart={shlex.join(command)}\nRestart=on-failure\nRestartSec=30\n'
-                   'StandardOutput=journal\nStandardError=journal\nSyslogIdentifier=buky-licitaciones\n'
+                   'StandardOutput=journal\nStandardError=journal\nSyslogIdentifier=butake-licitaciones\n'
                    '\n[Install]\nWantedBy=default.target\n').encode('utf-8')
     elif system == 'Windows':
-        path = folder / 'buky-licitaciones-task.json'
-        content = (json.dumps({'nombre': 'BukyLicitaciones', 'comando': command, 'inicio': 'ONLOGON'}, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
+        path = folder / 'butake-licitaciones-task.json'
+        content = (json.dumps({'nombre': 'ButakeLicitaciones', 'comando': command, 'inicio': 'ONLOGON'}, ensure_ascii=False, indent=2) + '\n').encode('utf-8')
     else:
         raise ServiceError(tr('service.definition_unsupported'))
     version_store.atomic_write(path, content)
@@ -306,7 +306,7 @@ def enable(directory, system=None, runner=None, agents_dir=None):
         runner(['systemctl', '--user', 'enable', '--now', info['archivo']])
     elif system == 'Windows':
         command = subprocess.list2cmdline(info['comando'])
-        runner(['schtasks', '/Create', '/TN', 'BukyLicitaciones', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/F', '/TR', command])
+        runner(['schtasks', '/Create', '/TN', 'ButakeLicitaciones', '/SC', 'ONLOGON', '/RL', 'LIMITED', '/F', '/TR', command])
     else:
         raise ServiceError(tr('service.manager_unsupported'))
     return {'estado': 'habilitado', **info}
@@ -323,9 +323,9 @@ def disable(directory, system=None, runner=None, agents_dir=None):
             pass  # Ya estaba detenido; igual se retira del inicio de sesión.
         (Path(agents_dir or launch_agents_dir()) / (LAUNCH_LABEL + '.plist')).unlink(missing_ok=True)
     elif system == 'Linux':
-        runner(['systemctl', '--user', 'disable', '--now', 'buky-licitaciones.service'])
+        runner(['systemctl', '--user', 'disable', '--now', 'butake-licitaciones.service'])
     elif system == 'Windows':
-        runner(['schtasks', '/Delete', '/TN', 'BukyLicitaciones', '/F'])
+        runner(['schtasks', '/Delete', '/TN', 'ButakeLicitaciones', '/F'])
     else:
         raise ServiceError(tr('service.manager_unsupported'))
     return {'estado': 'deshabilitado', **info}

@@ -31,17 +31,17 @@ PROVIDERS = {
         'token': 'https://oauth2.googleapis.com/token',
         'scope': 'https://www.googleapis.com/auth/gmail.readonly',
         'api': 'https://gmail.googleapis.com',
-        'client_env': 'BUKY_GMAIL_CLIENT_ID',
+        'client_env': 'BUTAKE_GMAIL_CLIENT_ID',
         # Google exige el «client secret» incluso en clientes de escritorio; para ese tipo de
         # aplicación no es confidencial, pero igual se guarda solo en el almacén seguro.
-        'secret_env': 'BUKY_GMAIL_CLIENT_SECRET',
+        'secret_env': 'BUTAKE_GMAIL_CLIENT_SECRET',
     },
     'microsoft': {
         'authorize': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize',
         'token': 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
         'scope': 'offline_access https://graph.microsoft.com/Mail.Read',
         'api': 'https://graph.microsoft.com',
-        'client_env': 'BUKY_MICROSOFT_CLIENT_ID',
+        'client_env': 'BUTAKE_MICROSOFT_CLIENT_ID',
     },
 }
 DEFAULT_KEYWORDS = ['licitación', 'licitaciones', 'mercado público', 'compra ágil', 'orden de compra', 'adjudicación', 'bases']
@@ -190,7 +190,7 @@ def wait_for_callback(server, expected_state, timeout=120):
             except MailError as error:
                 result['error'] = error
                 message = tr('mail.oauth_failed')
-            content = ('<!doctype html><html lang="es"><meta charset="utf-8"><title>Buky</title><body>' + message + '</body></html>').encode('utf-8')
+            content = ('<!doctype html><html lang="es"><meta charset="utf-8"><title>Butake</title><body>' + message + '</body></html>').encode('utf-8')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html; charset=utf-8')
             self.send_header('Content-Length', str(len(content)))
